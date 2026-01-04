@@ -15,7 +15,15 @@
 #   Admin (VNC): <ip>:5900, Passwort: levin
 #   Admin (SSH): ssh levin@<ip>
 #
+# GETESTET MIT:
+#   - Hetzner Cloud (Ubuntu 24.04)
+#   - Multipass (lokal)
+#
 # =============================================================================
+
+# --- Hostname von Hetzner übernehmen (falls verfügbar) ---
+hostname: ${DS:NONE}
+prefer_fqdn_over_hostname: false
 
 # --- Admin-User (immer gleich) ---
 users:
@@ -59,42 +67,66 @@ snap:
 # --- Konfiguration ---
 runcmd:
   # ---------------------------------------------
+  # Hostname setzen (Hetzner oder Multipass)
+  # ---------------------------------------------
+  - |
+    # Versuche Hetzner Metadata, sonst behalte aktuellen Hostname
+    HETZNER_HOSTNAME=$(curl -sf --connect-timeout 2 http://169.254.169.254/hetzner/v1/metadata/hostname || echo "")
+    if [ -n "$HETZNER_HOSTNAME" ]; then
+      hostnamectl set-hostname "$HETZNER_HOSTNAME"
+      echo "Hostname von Hetzner gesetzt: $HETZNER_HOSTNAME"
+    else
+      echo "Kein Hetzner Metadata, behalte Hostname: $(hostname)"
+    fi
+
+  # ---------------------------------------------
   # Kind-User aus Hostname ableiten
   # Server "friedrich-desktop" → User "friedrich"
   # ---------------------------------------------
   - |
     KINDNAME=$(hostname | cut -d'-' -f1)
-    echo "Erstelle User: $KINDNAME"
-    
+    echo "=== Erstelle User: $KINDNAME ==="
+
     # Kind-User anlegen
     useradd -m -s /bin/bash -G users "$KINDNAME"
     echo "$KINDNAME:codingclass" | chpasswd
-    
+
     # Desktop-Verzeichnis vorbereiten
     mkdir -p /home/$KINDNAME/Desktop
     mkdir -p /home/$KINDNAME/Projekte
     chown -R $KINDNAME:$KINDNAME /home/$KINDNAME
-    
+
     # Variable für spätere Scripts speichern
     echo "KINDNAME=$KINDNAME" > /etc/coding-class.conf
+    echo "User $KINDNAME erfolgreich erstellt"
 
   # ---------------------------------------------
-  # X11 erzwingen (statt Wayland)
-  # ---------------------------------------------
-  - |
-    sed -i 's/#WaylandEnable=false/WaylandEnable=false/' /etc/gdm3/custom.conf
-
-  # ---------------------------------------------
-  # Auto-Login für Kind konfigurieren
+  # GDM3 konfigurieren (Wayland deaktivieren + Auto-Login)
   # ---------------------------------------------
   - |
     source /etc/coding-class.conf
-    cat >> /etc/gdm3/custom.conf << EOF
-    
+    GDM_CONF="/etc/gdm3/custom.conf"
+
+    # Backup erstellen
+    cp "$GDM_CONF" "$GDM_CONF.bak" 2>/dev/null || true
+
+    # Komplette GDM3-Config neu schreiben
+    cat > "$GDM_CONF" << EOF
     [daemon]
+    WaylandEnable=false
     AutomaticLoginEnable=true
     AutomaticLogin=$KINDNAME
+
+    [security]
+
+    [xdmcp]
+
+    [chooser]
+
+    [debug]
     EOF
+
+    echo "GDM3 konfiguriert: Wayland=off, AutoLogin=$KINDNAME"
 
   # ---------------------------------------------
   # x11vnc für Session-Sharing einrichten
@@ -103,97 +135,106 @@ runcmd:
     # VNC Passwort setzen
     mkdir -p /etc/x11vnc
     x11vnc -storepasswd levin /etc/x11vnc/passwd
-    
+
     # Systemd Service für x11vnc
     cat > /etc/systemd/system/x11vnc.service << 'EOF'
-    [Unit]
-    Description=x11vnc Session Sharing
-    After=display-manager.service
-    Requires=display-manager.service
-    
-    [Service]
-    Type=simple
-    ExecStartPre=/bin/sleep 5
-    ExecStart=/usr/bin/x11vnc -display :0 -auth guess -forever -loop -noxdamage -repeat -rfbauth /etc/x11vnc/passwd -rfbport 5900 -shared -capslock -nomodtweak
-    Restart=on-failure
-    RestartSec=3
-    
-    [Install]
-    WantedBy=graphical.target
-    EOF
-    
+[Unit]
+Description=x11vnc Session Sharing
+After=display-manager.service
+Requires=display-manager.service
+
+[Service]
+Type=simple
+ExecStartPre=/bin/sleep 10
+ExecStart=/usr/bin/x11vnc -display :0 -auth guess -forever -loop -noxdamage -repeat -rfbauth /etc/x11vnc/passwd -rfbport 5900 -shared -capslock -nomodtweak
+Restart=on-failure
+RestartSec=5
+
+[Install]
+WantedBy=graphical.target
+EOF
+
     systemctl daemon-reload
     systemctl enable x11vnc.service
+    echo "x11vnc Service erstellt und aktiviert"
 
   # ---------------------------------------------
   # xrdp konfigurieren (verbindet zu VNC Session)
   # ---------------------------------------------
   - |
-    # xrdp soll VNC-Session verbinden, nicht neue X-Session starten
     cat > /etc/xrdp/xrdp.ini << 'EOF'
-    [Globals]
-    ini_version=1
-    fork=true
-    port=3389
-    tcp_nodelay=true
-    tcp_keepalive=true
-    security_layer=negotiate
-    crypt_level=high
-    certificate=
-    key_file=
-    ssl_protocols=TLSv1.2, TLSv1.3
-    autorun=Vnc-any
-    allow_channels=true
-    allow_multimon=true
-    bitmap_cache=true
-    bitmap_compression=true
-    bulk_compression=true
-    max_bpp=32
-    new_cursors=true
-    use_fastpath=both
-    
-    [Logging]
-    LogFile=xrdp.log
-    LogLevel=INFO
-    EnableSyslog=true
-    SyslogLevel=INFO
-    
-    [Channels]
-    rdpdr=true
-    rdpsnd=true
-    drdynvc=true
-    cliprdr=true
-    rail=true
-    xrdpvr=true
-    tcutils=true
-    
-    [Vnc-any]
-    name=VNC Session
-    lib=libvnc.so
-    ip=127.0.0.1
-    port=5900
-    username=na
-    password=ask
-    EOF
-    
+[Globals]
+ini_version=1
+fork=true
+port=3389
+tcp_nodelay=true
+tcp_keepalive=true
+security_layer=negotiate
+crypt_level=high
+certificate=
+key_file=
+ssl_protocols=TLSv1.2, TLSv1.3
+autorun=Vnc-any
+allow_channels=true
+allow_multimon=true
+bitmap_cache=true
+bitmap_compression=true
+bulk_compression=true
+max_bpp=32
+new_cursors=true
+use_fastpath=both
+
+[Logging]
+LogFile=xrdp.log
+LogLevel=INFO
+EnableSyslog=true
+SyslogLevel=INFO
+
+[Channels]
+rdpdr=true
+rdpsnd=true
+drdynvc=true
+cliprdr=true
+rail=true
+xrdpvr=true
+tcutils=true
+
+[Vnc-any]
+name=VNC Session
+lib=libvnc.so
+ip=127.0.0.1
+port=5900
+username=na
+password=ask
+EOF
+
     # SSL-Cert Zugriff
-    adduser xrdp ssl-cert
-    
+    adduser xrdp ssl-cert 2>/dev/null || true
+
     systemctl enable xrdp
     systemctl restart xrdp
+    echo "xrdp konfiguriert"
 
   # ---------------------------------------------
-  # Polkit für Farb-Management (xrdp braucht das)
+  # Polkit für Farb-Management (Ubuntu 24.04 Style)
   # ---------------------------------------------
   - |
-    cat > /etc/polkit-1/localauthority/50-local.d/45-allow-colord.pkla << 'EOF'
-    [Allow Colord all Users]
-    Identity=unix-user:*
-    Action=org.freedesktop.color-manager.create-device;org.freedesktop.color-manager.create-profile;org.freedesktop.color-manager.delete-device;org.freedesktop.color-manager.delete-profile;org.freedesktop.color-manager.modify-device;org.freedesktop.color-manager.modify-profile
-    ResultAny=no
-    ResultInactive=no
-    ResultActive=yes
-    EOF
+    # Ubuntu 24.04 nutzt JavaScript-basierte polkit Regeln
+    mkdir -p /etc/polkit-1/rules.d
+    cat > /etc/polkit-1/rules.d/45-allow-colord.rules << 'EOF'
+polkit.addRule(function(action, subject) {
+    if ((action.id == "org.freedesktop.color-manager.create-device" ||
+         action.id == "org.freedesktop.color-manager.create-profile" ||
+         action.id == "org.freedesktop.color-manager.delete-device" ||
+         action.id == "org.freedesktop.color-manager.delete-profile" ||
+         action.id == "org.freedesktop.color-manager.modify-device" ||
+         action.id == "org.freedesktop.color-manager.modify-profile") &&
+        subject.isInGroup("users")) {
+        return polkit.Result.YES;
+    }
+});
+EOF
+    echo "Polkit Regeln erstellt"
 
   # ---------------------------------------------
   # Firewall
@@ -204,33 +245,89 @@ runcmd:
   - ufw --force enable
 
   # ---------------------------------------------
-  # Desktop-Verknüpfungen nach Reboot setzen
-  # (Snap-Apps sind erst nach Reboot verfügbar)
+  # Desktop-Setup Service (statt rc.local)
+  # Läuft nach dem ersten Boot
   # ---------------------------------------------
   - |
-    cat > /etc/rc.local << 'RCEOF'
-    #!/bin/bash
-    source /etc/coding-class.conf
-    sleep 30
-    cp /var/lib/snapd/desktop/applications/code_code.desktop /home/$KINDNAME/Desktop/ 2>/dev/null || true
-    cp /usr/share/applications/firefox.desktop /home/$KINDNAME/Desktop/ 2>/dev/null || true
-    chmod +x /home/$KINDNAME/Desktop/*.desktop 2>/dev/null || true
-    chown -R $KINDNAME:$KINDNAME /home/$KINDNAME/Desktop
-    # Einmalig ausführen
-    rm /etc/rc.local
-    exit 0
-    RCEOF
-    chmod +x /etc/rc.local
+    cat > /etc/systemd/system/coding-class-setup.service << 'EOF'
+[Unit]
+Description=Coding Class Desktop Setup
+After=snapd.seeded.service graphical.target
+Wants=snapd.seeded.service
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/bin/coding-class-setup.sh
+RemainAfterExit=yes
+
+[Install]
+WantedBy=multi-user.target
+EOF
+
+    cat > /usr/local/bin/coding-class-setup.sh << 'SCRIPT'
+#!/bin/bash
+source /etc/coding-class.conf
+
+echo "=== Coding Class Setup startet ==="
+
+# Warten bis Snap fertig ist
+for i in {1..30}; do
+    if snap list code &>/dev/null; then
+        echo "VS Code Snap gefunden"
+        break
+    fi
+    echo "Warte auf Snap... ($i/30)"
+    sleep 10
+done
+
+# Desktop-Verknüpfungen erstellen
+DESKTOP_DIR="/home/$KINDNAME/Desktop"
+mkdir -p "$DESKTOP_DIR"
+
+# VS Code
+if [ -f /var/lib/snapd/desktop/applications/code_code.desktop ]; then
+    cp /var/lib/snapd/desktop/applications/code_code.desktop "$DESKTOP_DIR/"
+    echo "VS Code Desktop-Link erstellt"
+fi
+
+# Firefox
+if [ -f /usr/share/applications/firefox.desktop ]; then
+    cp /usr/share/applications/firefox.desktop "$DESKTOP_DIR/"
+    echo "Firefox Desktop-Link erstellt"
+fi
+
+# Ausführbar machen und Ownership setzen
+chmod +x "$DESKTOP_DIR"/*.desktop 2>/dev/null || true
+chown -R $KINDNAME:$KINDNAME "$DESKTOP_DIR"
+
+# Service deaktivieren (einmalige Ausführung)
+systemctl disable coding-class-setup.service
+
+echo "=== Coding Class Setup abgeschlossen ==="
+SCRIPT
+
+    chmod +x /usr/local/bin/coding-class-setup.sh
+    systemctl daemon-reload
+    systemctl enable coding-class-setup.service
+    echo "Desktop-Setup Service erstellt"
 
   # ---------------------------------------------
-  # Reboot
+  # Abschluss-Marker erstellen
+  # ---------------------------------------------
+  - |
+    echo "$(date): Cloud-init abgeschlossen" > /var/log/coding-class-complete.log
+    echo "Hostname: $(hostname)" >> /var/log/coding-class-complete.log
+    source /etc/coding-class.conf
+    echo "Kind-User: $KINDNAME" >> /var/log/coding-class-complete.log
+
+  # ---------------------------------------------
+  # Reboot für sauberen Start
   # ---------------------------------------------
   - reboot
 
 final_message: |
   =============================================
-  Coding Class Desktop bereit!
-  =============================================
-  Cloud-init abgeschlossen nach $UPTIME Sekunden.
+  Coding Class Desktop - Cloud-init fertig!
+  Abgeschlossen nach $UPTIME Sekunden.
   Server startet jetzt neu...
   =============================================

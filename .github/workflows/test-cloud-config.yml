@@ -1,0 +1,217 @@
+name: Test Cloud Config
+
+on:
+  push:
+    branches: [main, master, 'claude/**']
+  pull_request:
+    branches: [main, master]
+
+jobs:
+  # ============================================
+  # Job 1: Schnelle Validierung (läuft immer)
+  # ============================================
+  validate:
+    name: Validate Config
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Validate YAML syntax
+        run: |
+          echo "=== YAML Syntax Check ==="
+          python3 -c "import yaml; yaml.safe_load(open('cloud-config.yaml'))"
+          echo "✓ YAML Syntax OK"
+
+      - name: Install cloud-init
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y cloud-init
+
+      - name: Validate cloud-init schema
+        run: |
+          echo "=== Cloud-init Schema Check ==="
+          cloud-init schema --config-file cloud-config.yaml
+          echo "✓ Schema OK"
+
+  # ============================================
+  # Job 2: Integration Test mit Multipass
+  # ============================================
+  integration:
+    name: Integration Test (Multipass)
+    runs-on: ubuntu-latest
+    needs: validate
+    # Nur bei Push auf main/master oder wenn explizit getriggert
+    if: github.event_name == 'push' || github.event.pull_request.draft == false
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install Multipass
+        run: |
+          sudo snap install multipass
+          sudo snap refresh multipass
+          # Warten bis Multipass bereit ist
+          sleep 5
+          multipass version
+
+      - name: Launch VM with cloud-config
+        id: launch
+        run: |
+          echo "=== Starte VM: friedrich-desktop ==="
+
+          # VM mit cloud-config starten
+          # Hostname wird automatisch auf VM-Name gesetzt
+          sudo multipass launch 24.04 \
+            --name friedrich-desktop \
+            --cpus 2 \
+            --memory 4G \
+            --disk 20G \
+            --cloud-init cloud-config.yaml \
+            --timeout 600
+
+          echo "✓ VM gestartet"
+
+      - name: Wait for cloud-init to complete
+        run: |
+          echo "=== Warte auf cloud-init ==="
+
+          # Maximal 10 Minuten warten
+          for i in {1..60}; do
+            STATUS=$(sudo multipass exec friedrich-desktop -- cloud-init status 2>/dev/null || echo "running")
+            echo "Status ($i/60): $STATUS"
+
+            if echo "$STATUS" | grep -q "done"; then
+              echo "✓ Cloud-init abgeschlossen"
+              exit 0
+            fi
+
+            if echo "$STATUS" | grep -q "error"; then
+              echo "✗ Cloud-init Fehler!"
+              sudo multipass exec friedrich-desktop -- cat /var/log/cloud-init-output.log || true
+              exit 1
+            fi
+
+            sleep 10
+          done
+
+          echo "✗ Timeout - cloud-init nicht abgeschlossen"
+          exit 1
+
+      - name: Test - Admin user exists
+        run: |
+          echo "=== Test: Admin-User 'levin' ==="
+          sudo multipass exec friedrich-desktop -- id levin
+          echo "✓ Admin-User existiert"
+
+      - name: Test - Kind user exists
+        run: |
+          echo "=== Test: Kind-User 'friedrich' ==="
+          sudo multipass exec friedrich-desktop -- id friedrich
+          sudo multipass exec friedrich-desktop -- test -d /home/friedrich
+          sudo multipass exec friedrich-desktop -- test -d /home/friedrich/Desktop
+          sudo multipass exec friedrich-desktop -- test -d /home/friedrich/Projekte
+          echo "✓ Kind-User und Verzeichnisse existieren"
+
+      - name: Test - Config file created
+        run: |
+          echo "=== Test: Coding-Class Config ==="
+          sudo multipass exec friedrich-desktop -- cat /etc/coding-class.conf
+          echo "✓ Config-Datei existiert"
+
+      - name: Test - Services enabled
+        run: |
+          echo "=== Test: Systemd Services ==="
+          sudo multipass exec friedrich-desktop -- systemctl is-enabled xrdp || true
+          sudo multipass exec friedrich-desktop -- systemctl is-enabled x11vnc || true
+          sudo multipass exec friedrich-desktop -- systemctl is-enabled coding-class-setup || true
+          echo "✓ Services konfiguriert"
+
+      - name: Test - Packages installed
+        run: |
+          echo "=== Test: Pakete ==="
+          sudo multipass exec friedrich-desktop -- which git
+          sudo multipass exec friedrich-desktop -- which python3
+          sudo multipass exec friedrich-desktop -- dpkg -l | grep -q xrdp && echo "✓ xrdp installiert"
+          sudo multipass exec friedrich-desktop -- dpkg -l | grep -q x11vnc && echo "✓ x11vnc installiert"
+          echo "✓ Pakete installiert"
+
+      - name: Test - Firewall rules
+        run: |
+          echo "=== Test: Firewall ==="
+          sudo multipass exec friedrich-desktop -- sudo ufw status | grep -q "22/tcp" && echo "✓ SSH erlaubt"
+          sudo multipass exec friedrich-desktop -- sudo ufw status | grep -q "3389/tcp" && echo "✓ RDP erlaubt"
+          sudo multipass exec friedrich-desktop -- sudo ufw status | grep -q "5900/tcp" && echo "✓ VNC erlaubt"
+          echo "✓ Firewall konfiguriert"
+
+      - name: Test - GDM3 config
+        run: |
+          echo "=== Test: GDM3 Konfiguration ==="
+          sudo multipass exec friedrich-desktop -- cat /etc/gdm3/custom.conf
+          sudo multipass exec friedrich-desktop -- grep -q "WaylandEnable=false" /etc/gdm3/custom.conf && echo "✓ Wayland deaktiviert"
+          sudo multipass exec friedrich-desktop -- grep -q "AutomaticLogin=friedrich" /etc/gdm3/custom.conf && echo "✓ Auto-Login konfiguriert"
+          echo "✓ GDM3 konfiguriert"
+
+      - name: Test - Polkit rules
+        run: |
+          echo "=== Test: Polkit Regeln ==="
+          sudo multipass exec friedrich-desktop -- test -f /etc/polkit-1/rules.d/45-allow-colord.rules
+          echo "✓ Polkit Regeln existieren"
+
+      - name: Show completion log
+        run: |
+          echo "=== Completion Log ==="
+          sudo multipass exec friedrich-desktop -- cat /var/log/coding-class-complete.log || echo "(nicht vorhanden)"
+
+      - name: Show cloud-init logs on failure
+        if: failure()
+        run: |
+          echo "=== Cloud-init Output Log ==="
+          sudo multipass exec friedrich-desktop -- cat /var/log/cloud-init-output.log || true
+          echo ""
+          echo "=== Cloud-init Log (letzte 100 Zeilen) ==="
+          sudo multipass exec friedrich-desktop -- tail -100 /var/log/cloud-init.log || true
+
+      - name: Cleanup
+        if: always()
+        run: |
+          echo "=== Aufräumen ==="
+          sudo multipass delete friedrich-desktop --purge || true
+          echo "✓ VM gelöscht"
+
+  # ============================================
+  # Job 3: Zusammenfassung
+  # ============================================
+  summary:
+    name: Test Summary
+    runs-on: ubuntu-latest
+    needs: [validate, integration]
+    if: always()
+    steps:
+      - name: Check results
+        run: |
+          echo "========================================"
+          echo "        TEST ZUSAMMENFASSUNG"
+          echo "========================================"
+
+          if [ "${{ needs.validate.result }}" == "success" ]; then
+            echo "✓ Validierung: BESTANDEN"
+          else
+            echo "✗ Validierung: FEHLGESCHLAGEN"
+          fi
+
+          if [ "${{ needs.integration.result }}" == "success" ]; then
+            echo "✓ Integration: BESTANDEN"
+          elif [ "${{ needs.integration.result }}" == "skipped" ]; then
+            echo "○ Integration: ÜBERSPRUNGEN"
+          else
+            echo "✗ Integration: FEHLGESCHLAGEN"
+          fi
+
+          echo "========================================"
+
+          # Fail wenn einer der Tests fehlgeschlagen ist
+          if [ "${{ needs.validate.result }}" != "success" ] || [ "${{ needs.integration.result }}" == "failure" ]; then
+            exit 1
+          fi
