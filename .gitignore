@@ -1,0 +1,11 @@
+# Environment files with secrets
+.env
+.env.local
+.env.*.local
+
+# SSH keys
+*.pem
+id_*
+
+# Node
+node_modules/

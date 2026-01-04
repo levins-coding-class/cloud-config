@@ -1,18 +1,18 @@
 #cloud-config
 # =============================================================================
-# Coding Class - Linux Desktop für Kinder
+# Coding Class - Debian XFCE Desktop für Kinder
 # =============================================================================
 #
 # VERWENDUNG:
 #   1. Hetzner Cloud Console → Server erstellen
 #   2. Server-Name: coding-class-<kindname> (z.B. "coding-class-friedrich")
-#   3. Ubuntu 24.04 auswählen
+#   3. Debian 12 auswählen
 #   4. Bei "Cloud config" dieses YAML einfügen (KEINE Anpassung nötig!)
-#   5. Server erstellen & warten (~10 Minuten)
+#   5. Server erstellen & warten (~5-10 Minuten)
 #
 # ZUGANG:
 #   Kind (RDP):  <ip>:3389, User: <kindname>, Passwort: codingclass
-#   Admin (VNC): <ip>:5900, Passwort: levin
+#   Admin (VNC): vnc://<ip>:5900, Passwort: codingclass (screen sharing)
 #   Admin (SSH): ssh levin@<ip>
 #
 # =============================================================================
@@ -24,57 +24,71 @@ users:
     shell: /bin/bash
     sudo: ALL=(ALL) NOPASSWD:ALL
     lock_passwd: false
+    plain_text_passwd: levin
     ssh_authorized_keys:
       - ecdsa-sha2-nistp256 AAAAE2VjZHNhLXNoYTItbmlzdHAyNTYAAAAIbmlzdHAyNTYAAABBBINCAQL3itd2FpbGK6xAka3mU/PzfZeKW8s6wRCmL5ONkUjffZC1BWG/iNi3XU4WX//piOemqmRzgYIjJW0gItY=
       - ssh-rsa AAAAB3NzaC1yc2EAAAADAQABAAABgQCgXjznNCRu7IYiAq36fXravwWwwJ5xjCKgQo6pso48UMh2UJnjV2JjmFswUGKOD/zowUXveCwzRdh8jEvRBXoBJndbhaMC2Imu/5iWM2699VnkFEV3FbnKfHTIzJU+hiWr84pZobiHkc0jHO/HEzlGVzvVyegioxmz56a6BjalCeGhR/IHsObLQpVjWqetw+XSMzAj0dqTc+xg+bIMrnoSUDkroDrOarhdnsFPpu4NYPEiYqevbYEub0YNtEC9Zq/0gYBE73taBio4Fskb/NxQGzCjr0MNv63svXiUsDOtXdxdPRUmnsIvb0QXTKDct1zbw3y4qQdQUpVci1+z8uAC3oxBdA1JL4++KitYJfASzxnNWfVDl1hunfT72sbNxfHuZ1xMHoFkouFaeCwj8L2w4Wn5uxpq6sN+Qz/rOnzi+Tge8/sLY0NbU8+K7pW2EvcSdIWMzhbr8CWURCAZlqipJfPDJ+NZHOSdcQabJYLaOkuSDsxG0CWa1EuiplKb8TM=
-
-chpasswd:
-  expire: false
-  list:
-    - levin:levin
+      - ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIMYj2UzvHmgdiXlpwKuMzvv5CArJINWyrzmPHUSns17c claude-debug
 
 # --- Pakete ---
 package_update: true
 package_upgrade: true
 
 packages:
-  - ubuntu-desktop-minimal
+  # XFCE Desktop
+  - xfce4
+  - xfce4-goodies
+  - xfce4-terminal
+  - thunar
+  - mousepad
+  # X Server (wichtig für xrdp!)
+  - xorg
+  - xserver-xorg-core
+  - xorgxrdp
+  # Remote Desktop
   - xrdp
   - x11vnc
+  # Browser & Apps (echte .deb, kein Snap!)
+  - firefox-esr
+  - firefox-esr-l10n-de
+  # Entwicklungstools
   - git
   - build-essential
   - python3
   - python3-pip
-  - firefox
-  - gedit
+  # System
   - htop
   - curl
   - wget
   - net-tools
-
-snap:
-  commands:
-    - snap install code --classic
+  - dbus-x11
+  - locales
+  - locales-all
+  - console-setup
+  - ufw
 
 # --- Konfigurationsdateien ---
 write_files:
-  - path: /etc/systemd/system/x11vnc.service
+  # xRDP Startskript - startet XFCE + x11vnc für Screen Sharing
+  - path: /etc/xrdp/startwm.sh
+    permissions: '0755'
     content: |
-      [Unit]
-      Description=x11vnc Session Sharing
-      After=display-manager.service
-      Requires=display-manager.service
+      #!/bin/sh
+      # xrdp X session start script - XFCE mit x11vnc Screen Sharing
 
-      [Service]
-      Type=simple
-      ExecStartPre=/bin/sleep 10
-      ExecStart=/usr/bin/x11vnc -display :0 -auth guess -forever -loop -noxdamage -repeat -rfbauth /etc/x11vnc/passwd -rfbport 5900 -shared -capslock -nomodtweak
-      Restart=on-failure
-      RestartSec=5
+      if test -r /etc/profile; then
+          . /etc/profile
+      fi
 
-      [Install]
-      WantedBy=graphical.target
+      # x11vnc für diese RDP-Session starten (Screen Sharing für Levin)
+      if [ "$USER" != "levin" ] && [ -f /etc/x11vnc/passwd ]; then
+          x11vnc -display $DISPLAY -forever -shared -rfbauth /etc/x11vnc/passwd -rfbport 5900 -bg -o /tmp/x11vnc-$USER.log 2>&1
+      fi
 
+      # XFCE starten
+      exec startxfce4
+
+  # xrdp.ini - optimiert für Performance
   - path: /etc/xrdp/xrdp.ini
     content: |
       [Globals]
@@ -84,123 +98,121 @@ write_files:
       tcp_nodelay=true
       tcp_keepalive=true
       security_layer=negotiate
-      crypt_level=high
+      crypt_level=low
       certificate=
       key_file=
       ssl_protocols=TLSv1.2, TLSv1.3
-      autorun=Vnc-any
+      autorun=
       allow_channels=true
       allow_multimon=true
       bitmap_cache=true
       bitmap_compression=true
       bulk_compression=true
-      max_bpp=32
+      max_bpp=16
       new_cursors=true
       use_fastpath=both
 
       [Logging]
       LogFile=xrdp.log
-      LogLevel=INFO
-      EnableSyslog=true
-      SyslogLevel=INFO
+      LogLevel=ERROR
 
       [Channels]
       rdpdr=true
-      rdpsnd=true
+      rdpsnd=false
       drdynvc=true
       cliprdr=true
-      rail=true
-      xrdpvr=true
+      rail=false
+      xrdpvr=false
       tcutils=true
 
-      [Vnc-any]
-      name=VNC Session
-      lib=libvnc.so
-      ip=127.0.0.1
-      port=5900
-      username=na
+      [Xorg]
+      name=Xorg
+      lib=libxup.so
+      username=ask
       password=ask
+      ip=127.0.0.1
+      port=-1
+      code=20
 
-  - path: /etc/polkit-1/rules.d/45-allow-colord.rules
+  # XFCE Performance-Einstellungen (kein Compositor)
+  - path: /etc/skel/.config/xfce4/xfconf/xfce-perchannel-xml/xfwm4.xml
     content: |
-      polkit.addRule(function(action, subject) {
-          if ((action.id == "org.freedesktop.color-manager.create-device" ||
-               action.id == "org.freedesktop.color-manager.create-profile" ||
-               action.id == "org.freedesktop.color-manager.delete-device" ||
-               action.id == "org.freedesktop.color-manager.delete-profile" ||
-               action.id == "org.freedesktop.color-manager.modify-device" ||
-               action.id == "org.freedesktop.color-manager.modify-profile") &&
-              subject.isInGroup("users")) {
-              return polkit.Result.YES;
-          }
-      });
+      <?xml version="1.0" encoding="UTF-8"?>
+      <channel name="xfwm4" version="1.0">
+        <property name="general" type="empty">
+          <property name="use_compositing" type="bool" value="false"/>
+          <property name="box_move" type="bool" value="true"/>
+          <property name="box_resize" type="bool" value="true"/>
+        </property>
+      </channel>
 
-  - path: /etc/systemd/system/coding-class-setup.service
+  # Autostart: Desktop-Icons als vertrauenswürdig markieren
+  - path: /etc/xdg/autostart/trust-desktop-icons.desktop
     content: |
-      [Unit]
-      Description=Coding Class Desktop Setup
-      After=snapd.seeded.service graphical.target
-      Wants=snapd.seeded.service
+      [Desktop Entry]
+      Type=Application
+      Name=Trust Desktop Icons
+      Exec=/usr/local/bin/trust-desktop-icons.sh
+      Hidden=false
+      NoDisplay=true
 
-      [Service]
-      Type=oneshot
-      ExecStart=/usr/local/bin/coding-class-setup.sh
-      RemainAfterExit=yes
+  - path: /usr/local/bin/trust-desktop-icons.sh
+    permissions: '0755'
+    content: |
+      #!/bin/bash
+      sleep 2
+      for f in ~/Desktop/*.desktop; do
+        if [ -f "$f" ]; then
+          gio set "$f" metadata::trusted true 2>/dev/null
+        fi
+      done
 
-      [Install]
-      WantedBy=multi-user.target
-
+  # Desktop-Setup Skript
   - path: /usr/local/bin/coding-class-setup.sh
     permissions: '0755'
     content: |
       #!/bin/bash
       source /etc/coding-class.conf
 
-      echo "=== Coding Class Setup startet ==="
+      echo "=== Coding Class Setup ==="
 
-      # Warten bis Snap fertig ist
-      for i in {1..30}; do
-          if snap list code &>/dev/null; then
-              echo "VS Code Snap gefunden"
-              break
-          fi
-          echo "Warte auf Snap... ($i/30)"
-          sleep 10
+      for user in $KINDNAME levin; do
+        DESKTOP_DIR="/home/$user/Desktop"
+        mkdir -p "$DESKTOP_DIR"
+
+        # VS Code
+        [ -f /usr/share/applications/code.desktop ] && cp /usr/share/applications/code.desktop "$DESKTOP_DIR/"
+
+        # Firefox
+        [ -f /usr/share/applications/firefox-esr.desktop ] && cp /usr/share/applications/firefox-esr.desktop "$DESKTOP_DIR/"
+
+        # Terminal
+        [ -f /usr/share/applications/xfce4-terminal.desktop ] && cp /usr/share/applications/xfce4-terminal.desktop "$DESKTOP_DIR/"
+
+        # File Manager
+        [ -f /usr/share/applications/thunar.desktop ] && cp /usr/share/applications/thunar.desktop "$DESKTOP_DIR/"
+
+        chmod +x "$DESKTOP_DIR"/*.desktop 2>/dev/null
+        chown -R $user:$user "$DESKTOP_DIR"
       done
 
-      # Desktop-Verknüpfungen erstellen
-      DESKTOP_DIR="/home/$KINDNAME/Desktop"
-      mkdir -p "$DESKTOP_DIR"
+      echo "=== Setup done ==="
 
-      # VS Code
-      if [ -f /var/lib/snapd/desktop/applications/code_code.desktop ]; then
-          cp /var/lib/snapd/desktop/applications/code_code.desktop "$DESKTOP_DIR/"
-          echo "VS Code Desktop-Link erstellt"
-      fi
-
-      # Firefox
-      if [ -f /usr/share/applications/firefox.desktop ]; then
-          cp /usr/share/applications/firefox.desktop "$DESKTOP_DIR/"
-          echo "Firefox Desktop-Link erstellt"
-      fi
-
-      # Ausführbar machen und Ownership setzen
-      chmod +x "$DESKTOP_DIR"/*.desktop 2>/dev/null || true
-      chown -R $KINDNAME:$KINDNAME "$DESKTOP_DIR"
-
-      # Service deaktivieren (einmalige Ausführung)
-      systemctl disable coding-class-setup.service
-
-      echo "=== Coding Class Setup abgeschlossen ==="
+  # Default Browser setzen
+  - path: /usr/share/applications/defaults.list
+    content: |
+      [Default Applications]
+      x-scheme-handler/http=firefox-esr.desktop
+      x-scheme-handler/https=firefox-esr.desktop
+      text/html=firefox-esr.desktop
 
 # --- Befehle ---
 runcmd:
-  # Hostname von Hetzner holen (falls verfügbar)
+  # Hostname von Hetzner holen
   - |
     HETZNER_HOSTNAME=$(curl -sf --connect-timeout 2 http://169.254.169.254/hetzner/v1/metadata/hostname || echo "")
     if [ -n "$HETZNER_HOSTNAME" ]; then
       hostnamectl set-hostname "$HETZNER_HOSTNAME"
-      echo "Hostname von Hetzner: $HETZNER_HOSTNAME"
     fi
 
   # Kind-User aus Hostname erstellen
@@ -213,34 +225,55 @@ runcmd:
     chown -R $KINDNAME:$KINDNAME /home/$KINDNAME
     echo "KINDNAME=$KINDNAME" > /etc/coding-class.conf
 
-  # GDM3 konfigurieren
+  # Locale und Tastatur auf Deutsch
+  - sed -i 's/# de_DE.UTF-8 UTF-8/de_DE.UTF-8 UTF-8/' /etc/locale.gen
+  - locale-gen
+  - update-locale LANG=de_DE.UTF-8 LANGUAGE=de_DE:de
+  - timedatectl set-timezone Europe/Berlin
+  - |
+    cat > /etc/default/keyboard << EOF
+    XKBMODEL="pc105"
+    XKBLAYOUT="de"
+    XKBVARIANT=""
+    XKBOPTIONS=""
+    BACKSPACE="guess"
+    EOF
+
+  # VNC Passwort (muss lesbar sein für User-Session!)
+  - mkdir -p /etc/x11vnc
+  - x11vnc -storepasswd codingclass /etc/x11vnc/passwd
+  - chmod 644 /etc/x11vnc/passwd
+
+  # VS Code installieren (.deb)
+  - |
+    curl -fsSL https://packages.microsoft.com/keys/microsoft.asc | gpg --dearmor -o /usr/share/keyrings/microsoft.gpg
+    echo "deb [arch=amd64 signed-by=/usr/share/keyrings/microsoft.gpg] https://packages.microsoft.com/repos/code stable main" > /etc/apt/sources.list.d/vscode.list
+    apt-get update -qq
+    apt-get install -y code
+
+  # Swap (2GB)
+  - fallocate -l 2G /swapfile
+  - chmod 600 /swapfile
+  - mkswap /swapfile
+  - swapon /swapfile
+  - echo "/swapfile none swap sw 0 0" >> /etc/fstab
+
+  # XFCE Config für User
   - |
     source /etc/coding-class.conf
-    cat > /etc/gdm3/custom.conf << GDMEOF
-    [daemon]
-    WaylandEnable=false
-    AutomaticLoginEnable=true
-    AutomaticLogin=$KINDNAME
+    for user in $KINDNAME levin; do
+      mkdir -p /home/$user/.config/xfce4/xfconf/xfce-perchannel-xml
+      cp /etc/skel/.config/xfce4/xfconf/xfce-perchannel-xml/xfwm4.xml /home/$user/.config/xfce4/xfconf/xfce-perchannel-xml/
+      chown -R $user:$user /home/$user/.config
+    done
 
-    [security]
-
-    [xdmcp]
-
-    [chooser]
-
-    [debug]
-    GDMEOF
-
-  # VNC Passwort setzen
-  - mkdir -p /etc/x11vnc
-  - x11vnc -storepasswd levin /etc/x11vnc/passwd
-
-  # Services aktivieren
-  - systemctl daemon-reload
-  - systemctl enable x11vnc.service
+  # xRDP konfigurieren
   - adduser xrdp ssl-cert 2>/dev/null || true
   - systemctl enable xrdp
-  - systemctl enable coding-class-setup.service
+  - systemctl start xrdp
+
+  # Desktop-Verknüpfungen
+  - /usr/local/bin/coding-class-setup.sh
 
   # Firewall
   - ufw allow 22/tcp
@@ -248,12 +281,11 @@ runcmd:
   - ufw allow 5900/tcp
   - ufw --force enable
 
-  # Abschluss-Log
+  # Abschluss
   - |
     source /etc/coding-class.conf
-    echo "$(date): Cloud-init done, User: $KINDNAME" > /var/log/coding-class-complete.log
+    echo "$(date): Cloud-init done, User: $KINDNAME, Desktop: Debian XFCE" > /var/log/coding-class-complete.log
 
-  # Reboot
   - reboot
 
-final_message: "Coding Class Desktop fertig nach $UPTIME Sekunden. Reboot..."
+final_message: "Coding Class Debian XFCE Desktop fertig nach $UPTIME Sekunden."
