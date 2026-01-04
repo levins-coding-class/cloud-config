@@ -29,7 +29,7 @@ Die `cloud-config.yaml` erstellt automatisch einen vollständig konfigurierten L
 
 ## Hetzner Cloud Konfiguration
 
-- **Server Type:** cx22 (2 vCPU, 4 GB RAM, 40 GB Disk)
+- **Server Type:** cx33 (4 vCPU, 8 GB RAM, 80 GB Disk)
 - **Image:** Debian 12
 - **Location:** nbg1 (Nürnberg)
 - **SSH Key ID:** 105159908 (claude-debug)
@@ -63,7 +63,7 @@ source .env
 jq -n \
   --arg name "coding-class-<kindname>" \
   --rawfile user_data cloud-config.yaml \
-  '{name: $name, server_type: "cx22", image: "debian-12", location: "nbg1", ssh_keys: [105159908], user_data: $user_data}' \
+  '{name: $name, server_type: "cx33", image: "debian-12", location: "nbg1", ssh_keys: [105159908], user_data: $user_data}' \
 | curl -X POST -H "Authorization: Bearer $HETZNER_API_TOKEN" -H "Content-Type: application/json" -d @- "https://api.hetzner.cloud/v1/servers"
 
 # Server löschen

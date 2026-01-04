@@ -7,9 +7,14 @@
     "deploy": "node deploy.js"
   },
   "dependencies": {
+    "commander": "^14.0.2",
     "dotenv": "^16.3.1"
   },
-  "keywords": ["hetzner", "cloud-config", "coding-class"],
+  "keywords": [
+    "hetzner",
+    "cloud-config",
+    "coding-class"
+  ],
   "author": "Levin Keller",
   "license": "MIT"
 }
