@@ -15,7 +15,7 @@
 
 set -e
 
-VM_NAME="friedrich-desktop"
+VM_NAME="coding-class-friedrich"
 CONFIG_FILE="cloud-config.yaml"
 
 # Farben

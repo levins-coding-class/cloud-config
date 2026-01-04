@@ -5,7 +5,7 @@
 #
 # VERWENDUNG:
 #   1. Hetzner Cloud Console → Server erstellen
-#   2. Server-Name: <kindname>-desktop (z.B. "friedrich-desktop")
+#   2. Server-Name: coding-class-<kindname> (z.B. "coding-class-friedrich")
 #   3. Ubuntu 24.04 auswählen
 #   4. Bei "Cloud config" dieses YAML einfügen (KEINE Anpassung nötig!)
 #   5. Server erstellen & warten (~10 Minuten)
@@ -81,10 +81,10 @@ runcmd:
 
   # ---------------------------------------------
   # Kind-User aus Hostname ableiten
-  # Server "friedrich-desktop" → User "friedrich"
+  # Server "coding-class-friedrich" → User "friedrich"
   # ---------------------------------------------
   - |
-    KINDNAME=$(hostname | cut -d'-' -f1)
+    KINDNAME=$(hostname | sed 's/^coding-class-//')
     echo "=== Erstelle User: $KINDNAME ==="
 
     # Kind-User anlegen
