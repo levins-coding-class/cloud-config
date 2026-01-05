@@ -28,6 +28,31 @@ users:
     ssh_authorized_keys:
 {{SSH_AUTHORIZED_KEYS}}
 
+# --- SSH-Sicherheit: Passwort-Login per SSH deaktivieren ---
+# Nur SSH-Key-Authentifizierung erlauben (RDP/VNC nutzen weiterhin Passwörter)
+ssh_pwauth: false
+
+# --- Lokalisierung (nativ statt runcmd) ---
+locale: de_DE.UTF-8
+timezone: Europe/Berlin
+keyboard:
+  layout: de
+  model: pc105
+
+# --- Swap (nativ statt runcmd) ---
+swap:
+  filename: /swapfile
+  size: 2147483648  # 2GB in Bytes
+  maxsize: 2147483648
+
+# --- VS Code Repository (nativ statt runcmd) ---
+apt:
+  sources:
+    vscode:
+      source: "deb [arch=amd64 signed-by=$KEY_FILE] https://packages.microsoft.com/repos/code stable main"
+      keyid: BC528686B50D79E339D3721CEB3E94ADBE1229CF
+      keyserver: https://packages.microsoft.com/keys/microsoft.asc
+
 # --- Pakete ---
 package_update: true
 package_upgrade: true
@@ -60,10 +85,9 @@ packages:
   - wget
   - net-tools
   - dbus-x11
-  - locales
-  - locales-all
-  - console-setup
   - ufw
+  # VS Code (aus apt sources)
+  - code
 
 # --- Konfigurationsdateien ---
 write_files:
@@ -204,16 +228,10 @@ write_files:
       x-scheme-handler/https=firefox-esr.desktop
       text/html=firefox-esr.desktop
 
-# --- Befehle ---
+# --- Befehle (nur was nicht nativ geht) ---
 runcmd:
-  # Hostname von Hetzner holen
-  - |
-    HETZNER_HOSTNAME=$(curl -sf --connect-timeout 2 http://169.254.169.254/hetzner/v1/metadata/hostname || echo "")
-    if [ -n "$HETZNER_HOSTNAME" ]; then
-      hostnamectl set-hostname "$HETZNER_HOSTNAME"
-    fi
-
   # Kind-User aus Hostname erstellen
+  # (Hostname wird automatisch von Hetzner cloud-init datasource gesetzt)
   - |
     KINDNAME=$(hostname | sed 's/^coding-class-//')
     echo "=== Erstelle User: $KINDNAME ==="
@@ -223,40 +241,12 @@ runcmd:
     chown -R $KINDNAME:$KINDNAME /home/$KINDNAME
     echo "KINDNAME=$KINDNAME" > /etc/coding-class.conf
 
-  # Locale und Tastatur auf Deutsch
-  - sed -i 's/# de_DE.UTF-8 UTF-8/de_DE.UTF-8 UTF-8/' /etc/locale.gen
-  - locale-gen
-  - update-locale LANG=de_DE.UTF-8 LANGUAGE=de_DE:de
-  - timedatectl set-timezone Europe/Berlin
-  - |
-    cat > /etc/default/keyboard << EOF
-    XKBMODEL="pc105"
-    XKBLAYOUT="de"
-    XKBVARIANT=""
-    XKBOPTIONS=""
-    BACKSPACE="guess"
-    EOF
-
-  # VNC Passwort (muss lesbar sein für User-Session!)
+  # VNC Passwort (muss lesbar sein für User-Session)
   - mkdir -p /etc/x11vnc
   - x11vnc -storepasswd {{VNC_PASSWORD}} /etc/x11vnc/passwd
   - chmod 644 /etc/x11vnc/passwd
 
-  # VS Code installieren (.deb)
-  - |
-    curl -fsSL https://packages.microsoft.com/keys/microsoft.asc | gpg --dearmor -o /usr/share/keyrings/microsoft.gpg
-    echo "deb [arch=amd64 signed-by=/usr/share/keyrings/microsoft.gpg] https://packages.microsoft.com/repos/code stable main" > /etc/apt/sources.list.d/vscode.list
-    apt-get update -qq
-    apt-get install -y code
-
-  # Swap (2GB)
-  - fallocate -l 2G /swapfile
-  - chmod 600 /swapfile
-  - mkswap /swapfile
-  - swapon /swapfile
-  - echo "/swapfile none swap sw 0 0" >> /etc/fstab
-
-  # XFCE Config für User
+  # XFCE Config für User kopieren
   - |
     source /etc/coding-class.conf
     for user in $KINDNAME {{ADMIN_NAME}}; do
@@ -265,25 +255,31 @@ runcmd:
       chown -R $user:$user /home/$user/.config
     done
 
-  # xRDP konfigurieren
+  # xRDP konfigurieren und starten
   - adduser xrdp ssl-cert 2>/dev/null || true
   - systemctl enable xrdp
   - systemctl start xrdp
 
-  # Desktop-Verknüpfungen
+  # Desktop-Verknüpfungen erstellen
   - /usr/local/bin/coding-class-setup.sh
 
-  # Firewall
+  # Firewall konfigurieren
   - ufw allow 22/tcp
   - ufw allow 3389/tcp
   - ufw allow 5900/tcp
   - ufw --force enable
 
-  # Abschluss
+  # Abschluss loggen
   - |
     source /etc/coding-class.conf
     echo "$(date): Cloud-init done, User: $KINDNAME, Desktop: Debian XFCE" > /var/log/coding-class-complete.log
 
-  - reboot
+# --- Neustart nach Setup ---
+power_state:
+  delay: now
+  mode: reboot
+  message: "Cloud-init Setup abgeschlossen - Neustart..."
+  timeout: 30
+  condition: true
 
 final_message: "Coding Class Debian XFCE Desktop fertig nach $UPTIME Sekunden."
