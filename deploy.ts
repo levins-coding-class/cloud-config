@@ -1,4 +1,4 @@
-#!/usr/bin/env node
+#!/usr/bin/env -S node --experimental-strip-types
 import { program } from 'commander';
 import { createInterface } from 'readline';
 import { readFileSync } from 'fs';
@@ -9,8 +9,43 @@ import config from './config.json' with { type: 'json' };
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 
+// Types
+interface Config {
+  hetzner: {
+    apiToken: string;
+  };
+  admin: {
+    name: string;
+    sshKeys: string[];
+  };
+}
+
+interface HetznerServer {
+  id: number;
+  name: string;
+  status: string;
+  public_net?: {
+    ipv4?: {
+      ip: string;
+    };
+  };
+}
+
+interface Passwords {
+  admin: string;
+  mentee: string;
+  vnc: string;
+}
+
+interface CreateServerResult {
+  server: HetznerServer;
+  passwords: Passwords;
+}
+
+const typedConfig = config as Config;
+
 // Passwort-Generator (12 Zeichen, alphanumerisch)
-function generatePassword(length = 12) {
+function generatePassword(length: number = 12): string {
   const chars = 'abcdefghijkmnopqrstuvwxyzABCDEFGHJKLMNPQRSTUVWXYZ23456789';
   let password = '';
   const bytes = randomBytes(length);
@@ -21,21 +56,21 @@ function generatePassword(length = 12) {
 }
 
 // SSH Keys als YAML-Array formatieren
-function formatSshKeysYaml() {
-  const keys = config.admin?.sshKeys || [];
+function formatSshKeysYaml(): string {
+  const keys = typedConfig.admin?.sshKeys || [];
   if (keys.length === 0) return '      # Keine SSH Keys konfiguriert';
 
   return keys
-    .filter(k => k && !k.startsWith('#'))
-    .map(k => `      - ${k}`)
+    .filter((k: string) => k && !k.startsWith('#'))
+    .map((k: string) => `      - ${k}`)
     .join('\n');
 }
 
 // Prompt-Helper
-function prompt(question) {
+function prompt(question: string): Promise<string> {
   const rl = createInterface({ input: process.stdin, output: process.stdout });
   return new Promise(resolve => {
-    rl.question(question, answer => {
+    rl.question(question, (answer: string) => {
       rl.close();
       resolve(answer.trim());
     });
@@ -43,17 +78,17 @@ function prompt(question) {
 }
 
 // Hetzner API Call
-async function hetznerApi(method, endpoint, body = null) {
+async function hetznerApi<T = unknown>(method: string, endpoint: string, body: object | null = null): Promise<T> {
   const response = await fetch(`https://api.hetzner.cloud/v1${endpoint}`, {
     method,
     headers: {
-      'Authorization': `Bearer ${config.hetzner.apiToken}`,
+      'Authorization': `Bearer ${typedConfig.hetzner.apiToken}`,
       'Content-Type': 'application/json',
     },
     body: body ? JSON.stringify(body) : null,
   });
 
-  const data = await response.json();
+  const data = await response.json() as T & { error?: { message: string } };
   if (!response.ok) {
     throw new Error(data.error?.message || `API Error: ${response.status}`);
   }
@@ -61,17 +96,17 @@ async function hetznerApi(method, endpoint, body = null) {
 }
 
 // Bestehende Server auflisten
-async function listServers() {
-  const result = await hetznerApi('GET', '/servers');
-  return result.servers.filter(s => s.name.startsWith('coding-class-'));
+async function listServers(): Promise<HetznerServer[]> {
+  const result = await hetznerApi<{ servers: HetznerServer[] }>('GET', '/servers');
+  return result.servers.filter((s: HetznerServer) => s.name.startsWith('coding-class-'));
 }
 
 // Server erstellen
-async function createServer(kindname) {
+async function createServer(kindname: string): Promise<CreateServerResult> {
   let cloudConfig = readFileSync(join(__dirname, 'cloud-config.yaml'), 'utf-8');
 
   // Passwörter generieren
-  const passwords = {
+  const passwords: Passwords = {
     admin: generatePassword(),
     mentee: generatePassword(),
     vnc: generatePassword(8), // VNC Passwörter oft auf 8 Zeichen begrenzt
@@ -79,7 +114,7 @@ async function createServer(kindname) {
 
   // Platzhalter ersetzen
   cloudConfig = cloudConfig
-    .replace(/\{\{ADMIN_NAME\}\}/g, config.admin.name)
+    .replace(/\{\{ADMIN_NAME\}\}/g, typedConfig.admin.name)
     .replace(/\{\{ADMIN_PASSWORD\}\}/g, passwords.admin)
     .replace(/\{\{MENTEE_PASSWORD\}\}/g, passwords.mentee)
     .replace(/\{\{VNC_PASSWORD\}\}/g, passwords.vnc)
@@ -96,19 +131,18 @@ async function createServer(kindname) {
     user_data: cloudConfig,
   };
 
-  const result = await hetznerApi('POST', '/servers', serverRequest);
+  const result = await hetznerApi<{ server: HetznerServer }>('POST', '/servers', serverRequest);
 
-  result.passwords = passwords;
-  return result;
+  return { ...result, passwords };
 }
 
 // Server löschen
-async function deleteServer(serverId) {
+async function deleteServer(serverId: number): Promise<void> {
   await hetznerApi('DELETE', `/servers/${serverId}`);
 }
 
 // Validierung Kindname
-function validateName(name) {
+function validateName(name: string): string {
   if (!name || !/^[a-z]+$/.test(name)) {
     console.error('❌ Name muss aus Kleinbuchstaben bestehen (z.B. "max")');
     process.exit(1);
@@ -117,12 +151,12 @@ function validateName(name) {
 }
 
 // Check Konfiguration
-function checkConfig() {
-  let missing = [];
-  if (!config.hetzner?.apiToken || config.hetzner.apiToken === 'your-api-token-here') {
+function checkConfig(): void {
+  const missing: string[] = [];
+  if (!typedConfig.hetzner?.apiToken || typedConfig.hetzner.apiToken === 'your-api-token-here') {
     missing.push('hetzner.apiToken');
   }
-  if (!config.admin?.name || config.admin.name === 'your-admin-name') {
+  if (!typedConfig.admin?.name || typedConfig.admin.name === 'your-admin-name') {
     missing.push('admin.name');
   }
 
@@ -172,7 +206,7 @@ program
   .alias('new')
   .description('Erstellt einen neuen Server')
   .option('-n, --name <name>', 'Name des Kindes (Kleinbuchstaben)')
-  .action(async (options) => {
+  .action(async (options: { name?: string }) => {
     checkConfig();
 
     let kindname = options.name;
@@ -185,7 +219,7 @@ program
 
     // Prüfen ob Server schon existiert
     const servers = await listServers();
-    const existing = servers.find(s => s.name === `coding-class-${kindname}`);
+    const existing = servers.find((s: HetznerServer) => s.name === `coding-class-${kindname}`);
     if (existing) {
       console.log(`❌ Server "coding-class-${kindname}" existiert bereits!`);
       const ip = existing.public_net?.ipv4?.ip;
@@ -198,7 +232,7 @@ program
     try {
       const result = await createServer(kindname);
       const ip = result.server.public_net?.ipv4?.ip || 'wird zugewiesen...';
-      const adminName = config.admin.name;
+      const adminName = typedConfig.admin.name;
 
       console.log(`\n✅ Server erstellt!`);
       console.log(`\n⏳ Installation läuft (~10 Minuten), Server rebootet automatisch.\n`);
@@ -214,7 +248,7 @@ program
       console.log(`     Passwort: ${result.passwords.vnc}`);
 
     } catch (error) {
-      console.error(`\n❌ Fehler: ${error.message}`);
+      console.error(`\n❌ Fehler: ${(error as Error).message}`);
       process.exit(1);
     }
   });
@@ -226,7 +260,7 @@ program
   .description('Löscht einen Server')
   .option('-n, --name <name>', 'Name des Kindes')
   .option('-f, --force', 'Ohne Bestätigung löschen')
-  .action(async (options) => {
+  .action(async (options: { name?: string; force?: boolean }) => {
     checkConfig();
 
     const servers = await listServers();
@@ -247,7 +281,7 @@ program
     }
 
     kindname = kindname.toLowerCase();
-    const server = servers.find(s => s.name === `coding-class-${kindname}`);
+    const server = servers.find((s: HetznerServer) => s.name === `coding-class-${kindname}`);
 
     if (!server) {
       console.log(`❌ Server "coding-class-${kindname}" nicht gefunden.`);
@@ -284,9 +318,9 @@ program
     }
 
     console.log('Befehle:');
-    console.log('  npm run deploy create --name <kind>  Neuen Server erstellen');
-    console.log('  npm run deploy delete --name <kind>  Server löschen');
-    console.log('  npm run deploy list                  Alle Server anzeigen');
+    console.log('  npm start create --name <kind>  Neuen Server erstellen');
+    console.log('  npm start delete --name <kind>  Server löschen');
+    console.log('  npm start list                  Alle Server anzeigen');
     console.log('');
   });
 

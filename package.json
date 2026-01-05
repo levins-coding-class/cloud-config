@@ -4,10 +4,13 @@
   "description": "Deploy-Script für Coding Class VMs auf Hetzner Cloud",
   "type": "module",
   "scripts": {
-    "deploy": "node deploy.js"
+    "start": "node --experimental-strip-types deploy.ts"
   },
   "dependencies": {
     "commander": "^14.0.2"
+  },
+  "devDependencies": {
+    "@types/node": "^22.0.0"
   },
   "keywords": [
     "hetzner",

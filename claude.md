@@ -61,13 +61,13 @@ cp config.example.json config.json
 npm install
 
 # Server erstellen (generiert automatisch Passwörter)
-npm run deploy create --name <kindname>
+npm start create --name <kindname>
 
 # Server anzeigen
-npm run deploy list
+npm start list
 
 # Server löschen
-npm run deploy delete --name <kindname>
+npm start delete --name <kindname>
 ```
 
 Das Script generiert bei jedem Deploy neue, sichere Passwörter und zeigt sie auf der Konsole an.

@@ -35,7 +35,7 @@ npm install
 ### 2. Server erstellen
 
 ```bash
-npm run deploy create --name <kindname>
+npm start create --name <kindname>
 ```
 
 Das Script generiert automatisch sichere Passwörter und zeigt sie am Ende an.
@@ -54,19 +54,19 @@ Die Zugangsdaten werden nach dem Erstellen angezeigt:
 ## CLI Befehle
 
 ```bash
-npm run deploy list          # Alle Server anzeigen
-npm run deploy create        # Neuen Server erstellen
-npm run deploy delete        # Server löschen
+npm start list          # Alle Server anzeigen
+npm start create        # Neuen Server erstellen
+npm start delete        # Server löschen
 ```
 
 ## Dateien
 
 - `cloud-config.yaml` - Die cloud-init Template-Konfiguration
-- `deploy.js` - CLI zum Erstellen/Verwalten von Servern
+- `deploy.ts` - CLI zum Erstellen/Verwalten von Servern (TypeScript)
 - `config.json` - Konfiguration (gitignored)
 
 ## Anforderungen
 
-- Node.js
+- Node.js 22+ (für `--experimental-strip-types`)
 - Hetzner Cloud Account
 - Konfiguration in `config.json`
