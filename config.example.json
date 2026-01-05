@@ -1,0 +1,12 @@
+{
+  "hetzner": {
+    "apiToken": "your-api-token-here"
+  },
+  "admin": {
+    "name": "your-admin-name",
+    "sshKeys": [
+      "ssh-ed25519 AAAA... your-key-comment",
+      "ssh-rsa AAAA... another-key"
+    ]
+  }
+}

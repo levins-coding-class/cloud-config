@@ -18,22 +18,22 @@ Die `cloud-config.yaml` erstellt automatisch einen vollständig konfigurierten L
 
 | User | Passwort | Zugang | Beschreibung |
 |------|----------|--------|--------------|
-| levin | levin | SSH, RDP | Admin/Sudoer |
-| `<kindname>` | codingclass | RDP | Wird aus Hostname extrahiert |
+| `${ADMIN_NAME}` | auto-generiert | SSH, RDP | Admin/Sudoer (Name konfigurierbar via admin.name in config.json) |
+| `<kindname>` | auto-generiert | RDP | Wird aus Hostname extrahiert |
 
 ### Zugriffsmethoden
 
-- **Kind (RDP):** `<server-ip>:3389` mit eigenem Account
-- **Levin (VNC):** `vnc://<server-ip>:5900` - Screen Sharing (startet wenn Kind eingeloggt ist), Passwort: `codingclass`
-- **Levin (SSH):** `ssh levin@<server-ip>`
+- **Kind (RDP):** `<server-ip>:3389` mit eigenem Account (Passwort wird bei Deploy generiert)
+- **Mentor (VNC):** `vnc://<server-ip>:5900` - Screen Sharing (startet wenn Kind eingeloggt ist, Passwort wird bei Deploy generiert)
+- **Admin (SSH):** `ssh <admin>@<server-ip>` (Name konfigurierbar via admin.name in config.json)
 
 ## Hetzner Cloud Konfiguration
 
 - **Server Type:** cx33 (4 vCPU, 8 GB RAM, 80 GB Disk)
 - **Image:** Debian 12
 - **Location:** nbg1 (Nürnberg)
-- **SSH Key ID:** 105159908 (claude-debug)
-- **API Token:** In `.env` Datei (gitignored)
+- **SSH Keys:** Konfigurierbar in `config.json` (admin.sshKeys)
+- **API Token:** In `config.json` (gitignored)
 
 ## Installierte Software
 
@@ -55,25 +55,29 @@ Die `cloud-config.yaml` erstellt automatisch einen vollständig konfigurierten L
 ## Deployment
 
 ```bash
-# Mit dem Deploy-Script (empfohlen)
-npm run deploy
+# Setup
+cp config.example.json config.json
+# config.json ausfüllen
+npm install
 
-# Oder manuell
-source .env
-jq -n \
-  --arg name "coding-class-<kindname>" \
-  --rawfile user_data cloud-config.yaml \
-  '{name: $name, server_type: "cx33", image: "debian-12", location: "nbg1", ssh_keys: [105159908], user_data: $user_data}' \
-| curl -X POST -H "Authorization: Bearer $HETZNER_API_TOKEN" -H "Content-Type: application/json" -d @- "https://api.hetzner.cloud/v1/servers"
+# Server erstellen (generiert automatisch Passwörter)
+npm start create --name <kindname>
+
+# Server anzeigen
+npm start list
 
 # Server löschen
-curl -X DELETE -H "Authorization: Bearer $HETZNER_API_TOKEN" "https://api.hetzner.cloud/v1/servers/<ID>"
+npm start delete --name <kindname>
 ```
 
-## SSH Key
+Das Script generiert bei jedem Deploy neue, sichere Passwörter und zeigt sie auf der Konsole an.
 
-- **Pfad:** `~/.ssh/id_ed25519_hetzner`
-- **Hetzner ID:** 105159908
+## Konfiguration (config.json)
+
+Alle sensiblen Daten werden in `config.json` konfiguriert (gitignored):
+- `hetzner.apiToken` - Hetzner Cloud API Token
+- `admin.name` - Name des Admin-Accounts
+- `admin.sshKeys` - SSH Public Keys (als Array)
 
 ## Hinweise
 
