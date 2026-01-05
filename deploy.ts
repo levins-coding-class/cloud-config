@@ -38,30 +38,48 @@ interface Passwords {
 }
 
 interface CreateServerResult {
-  server: HetznerServer;
+  apiResult: {
+    server: HetznerServer;
+  };
   passwords: Passwords;
 }
 
 const typedConfig = config as Config;
 
 // Passwort-Generator (12 Zeichen, alphanumerisch)
+// Hinweis: Visuell schwer unterscheidbare Zeichen (0, O, 1, l, I) werden
+// bewusst ausgeschlossen, um Vertipper und Verwechslungen zu vermeiden.
 function generatePassword(length: number = 12): string {
   const chars = 'abcdefghijkmnopqrstuvwxyzABCDEFGHJKLMNPQRSTUVWXYZ23456789';
   let password = '';
-  const bytes = randomBytes(length);
-  for (let i = 0; i < length; i++) {
-    password += chars[bytes[i] % chars.length];
+  const maxMultiple = Math.floor(256 / chars.length) * chars.length;
+
+  while (password.length < length) {
+    const bytes = randomBytes(32); // Generate 32 bytes per iteration for efficiency
+    for (let i = 0; i < bytes.length && password.length < length; i++) {
+      const byte = bytes[i];
+      if (byte >= maxMultiple) {
+        // Discard values that would introduce modulo bias
+        continue;
+      }
+      password += chars[byte % chars.length];
+    }
   }
   return password;
 }
 
 // SSH Keys als YAML-Array formatieren
 function formatSshKeysYaml(): string {
-  const keys = typedConfig.admin?.sshKeys || [];
-  if (keys.length === 0) return '      # Keine SSH Keys konfiguriert';
+  const rawKeys = typedConfig.admin?.sshKeys || [];
+  const keys = rawKeys.filter((k: string) => k && !k.startsWith('#'));
+
+  if (keys.length === 0) {
+    throw new Error(
+      'No SSH keys configured for the admin user. Configure at least one SSH public key in config.json under "admin.sshKeys" to avoid password-only SSH access.'
+    );
+  }
 
   return keys
-    .filter((k: string) => k && !k.startsWith('#'))
     .map((k: string) => `      - ${k}`)
     .join('\n');
 }
@@ -109,16 +127,16 @@ async function createServer(kindname: string): Promise<CreateServerResult> {
   const passwords: Passwords = {
     admin: generatePassword(),
     mentee: generatePassword(),
-    vnc: generatePassword(8), // VNC Passwörter oft auf 8 Zeichen begrenzt
+    vnc: generatePassword(8), // x11vnc verwendet nur die ersten 8 Zeichen des Passworts (längere Passwörter werden stillschweigend abgeschnitten)
   };
 
   // Platzhalter ersetzen
   cloudConfig = cloudConfig
-    .replace(/\{\{ADMIN_NAME\}\}/g, typedConfig.admin.name)
-    .replace(/\{\{ADMIN_PASSWORD\}\}/g, passwords.admin)
-    .replace(/\{\{MENTEE_PASSWORD\}\}/g, passwords.mentee)
-    .replace(/\{\{VNC_PASSWORD\}\}/g, passwords.vnc)
-    .replace(/\{\{SSH_AUTHORIZED_KEYS\}\}/g, formatSshKeysYaml());
+    .replace(/\{\{ADMIN_NAME\}\}/g, () => typedConfig.admin.name)
+    .replace(/\{\{ADMIN_PASSWORD\}\}/g, () => passwords.admin)
+    .replace(/\{\{MENTEE_PASSWORD\}\}/g, () => passwords.mentee)
+    .replace(/\{\{VNC_PASSWORD\}\}/g, () => passwords.vnc)
+    .replace(/\{\{SSH_AUTHORIZED_KEYS\}\}/g, () => formatSshKeysYaml());
 
   console.log(`\n🚀 Erstelle Server für ${kindname}...`);
 
@@ -133,7 +151,7 @@ async function createServer(kindname: string): Promise<CreateServerResult> {
 
   const result = await hetznerApi<{ server: HetznerServer }>('POST', '/servers', serverRequest);
 
-  return { ...result, passwords };
+  return { apiResult: result, passwords };
 }
 
 // Server löschen
@@ -153,16 +171,40 @@ function validateName(name: string): string {
 // Check Konfiguration
 function checkConfig(): void {
   const missing: string[] = [];
-  if (!typedConfig.hetzner?.apiToken || typedConfig.hetzner.apiToken === 'your-api-token-here') {
-    missing.push('hetzner.apiToken');
+
+  // Überprüfe, ob die Top-Level-Konfigurationen existieren
+  if (!typedConfig || typeof typedConfig !== 'object') {
+    console.error('❌ Konfiguration konnte nicht geladen werden oder ist ungültig.');
+    process.exit(1);
   }
-  if (!typedConfig.admin?.name || typedConfig.admin.name === 'your-admin-name') {
-    missing.push('admin.name');
+
+  if (!typedConfig.hetzner || typeof typedConfig.hetzner !== 'object') {
+    missing.push('hetzner (Objekt fehlt oder ist ungültig)');
+  } else {
+    if (!typedConfig.hetzner.apiToken || typedConfig.hetzner.apiToken === 'your-api-token-here') {
+      missing.push('hetzner.apiToken');
+    }
+  }
+
+  if (!typedConfig.admin || typeof typedConfig.admin !== 'object') {
+    missing.push('admin (Objekt fehlt oder ist ungültig)');
+  } else {
+    if (!typedConfig.admin.name || typedConfig.admin.name === 'your-admin-name') {
+      missing.push('admin.name');
+    }
   }
 
   if (missing.length > 0) {
     console.error('❌ Fehlende Konfiguration: ' + missing.join(', '));
     console.error('   Bearbeite config.json und trage die Werte ein.');
+    console.error('   Tipp: Siehe config.example.json für gültige Beispielwerte.');
+
+    if (missing.includes('hetzner.apiToken')) {
+      console.error('   - hetzner.apiToken: Gültiger Hetzner Cloud API Token (z.B. "sk_xxxxxxxxx").');
+    }
+    if (missing.includes('admin.name')) {
+      console.error('   - admin.name: Vollständiger Name der verantwortlichen Person (z.B. "Max Mustermann").');
+    }
     process.exit(1);
   }
 }
@@ -231,7 +273,7 @@ program
 
     try {
       const result = await createServer(kindname);
-      const ip = result.server.public_net?.ipv4?.ip || 'wird zugewiesen...';
+      const ip = result.apiResult.server.public_net?.ipv4?.ip || 'wird zugewiesen...';
       const adminName = typedConfig.admin.name;
 
       console.log(`\n✅ Server erstellt!`);

@@ -18,7 +18,7 @@ Die `cloud-config.yaml` erstellt automatisch einen vollständig konfigurierten L
 
 | User | Passwort | Zugang | Beschreibung |
 |------|----------|--------|--------------|
-| `${ADMIN_NAME}` | auto-generiert | SSH, RDP | Admin/Sudoer (konfigurierbar in .env) |
+| `${ADMIN_NAME}` | auto-generiert | SSH, RDP | Admin/Sudoer (Name konfigurierbar via admin.name in config.json) |
 | `<kindname>` | auto-generiert | RDP | Wird aus Hostname extrahiert |
 
 ### Zugriffsmethoden
