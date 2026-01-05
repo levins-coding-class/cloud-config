@@ -26,6 +26,8 @@ cp .env.example .env
 # In .env eintragen:
 # - HETZNER_API_TOKEN: Dein Hetzner Cloud API Token
 # - ADMIN_NAME: Name des Admin-Accounts (z.B. "levin")
+# - SSH_AUTHORIZED_KEYS: Deine SSH Public Keys (einer pro Zeile)
+# - HETZNER_SSH_KEY_ID: (optional) Hetzner SSH Key ID für Rescue-System
 
 # Dependencies installieren
 npm install

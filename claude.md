@@ -32,7 +32,7 @@ Die `cloud-config.yaml` erstellt automatisch einen vollständig konfigurierten L
 - **Server Type:** cx33 (4 vCPU, 8 GB RAM, 80 GB Disk)
 - **Image:** Debian 12
 - **Location:** nbg1 (Nürnberg)
-- **SSH Key ID:** 105159908 (claude-debug)
+- **SSH Keys:** Konfigurierbar in `.env` (SSH_AUTHORIZED_KEYS)
 - **API Token:** In `.env` Datei (gitignored)
 
 ## Installierte Software
@@ -57,7 +57,11 @@ Die `cloud-config.yaml` erstellt automatisch einen vollständig konfigurierten L
 ```bash
 # Setup
 cp .env.example .env
-# .env ausfüllen mit HETZNER_API_TOKEN und ADMIN_NAME
+# .env ausfüllen mit:
+# - HETZNER_API_TOKEN
+# - ADMIN_NAME
+# - SSH_AUTHORIZED_KEYS (deine Public Keys)
+# - HETZNER_SSH_KEY_ID (optional)
 npm install
 
 # Server erstellen (generiert automatisch Passwörter)
@@ -72,10 +76,13 @@ npm run deploy delete --name <kindname>
 
 Das Script generiert bei jedem Deploy neue, sichere Passwörter und zeigt sie auf der Konsole an.
 
-## SSH Key
+## Konfiguration (.env)
 
-- **Pfad:** `~/.ssh/id_ed25519_hetzner`
-- **Hetzner ID:** 105159908
+Alle sensiblen Daten werden in `.env` konfiguriert (gitignored):
+- `HETZNER_API_TOKEN` - Hetzner Cloud API Token
+- `ADMIN_NAME` - Name des Admin-Accounts
+- `SSH_AUTHORIZED_KEYS` - SSH Public Keys (einer pro Zeile)
+- `HETZNER_SSH_KEY_ID` - (optional) Hetzner SSH Key ID für Rescue-System
 
 ## Hinweise
 

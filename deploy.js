@@ -20,6 +20,19 @@ function generatePassword(length = 12) {
   return password;
 }
 
+// SSH Keys aus .env als YAML-Array formatieren
+function formatSshKeysYaml() {
+  const keys = process.env.SSH_AUTHORIZED_KEYS || '';
+  if (!keys.trim()) return '      # Keine SSH Keys konfiguriert';
+
+  return keys
+    .split('\n')
+    .map(k => k.trim())
+    .filter(k => k && !k.startsWith('#'))
+    .map(k => `      - ${k}`)
+    .join('\n');
+}
+
 // Prompt-Helper
 function prompt(question) {
   const rl = createInterface({ input: process.stdin, output: process.stdout });
@@ -71,18 +84,26 @@ async function createServer(kindname) {
     .replace(/\{\{ADMIN_NAME\}\}/g, process.env.ADMIN_NAME)
     .replace(/\{\{ADMIN_PASSWORD\}\}/g, passwords.admin)
     .replace(/\{\{MENTEE_PASSWORD\}\}/g, passwords.mentee)
-    .replace(/\{\{VNC_PASSWORD\}\}/g, passwords.vnc);
+    .replace(/\{\{VNC_PASSWORD\}\}/g, passwords.vnc)
+    .replace(/\{\{SSH_AUTHORIZED_KEYS\}\}/g, formatSshKeysYaml());
 
   console.log(`\n🚀 Erstelle Server für ${kindname}...`);
 
-  const result = await hetznerApi('POST', '/servers', {
+  // Hetzner API Request vorbereiten
+  const serverRequest = {
     name: `coding-class-${kindname}`,
     server_type: 'cx33',
     image: 'debian-12',
     location: 'nbg1',
-    ssh_keys: [105159908],
     user_data: cloudConfig,
-  });
+  };
+
+  // Optionale Hetzner SSH Key ID hinzufügen (für Rescue-System etc.)
+  if (process.env.HETZNER_SSH_KEY_ID) {
+    serverRequest.ssh_keys = [parseInt(process.env.HETZNER_SSH_KEY_ID)];
+  }
+
+  const result = await hetznerApi('POST', '/servers', serverRequest);
 
   result.passwords = passwords;
   return result;

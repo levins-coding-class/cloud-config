@@ -26,9 +26,7 @@ users:
     lock_passwd: false
     plain_text_passwd: {{ADMIN_PASSWORD}}
     ssh_authorized_keys:
-      - ecdsa-sha2-nistp256 AAAAE2VjZHNhLXNoYTItbmlzdHAyNTYAAAAIbmlzdHAyNTYAAABBBINCAQL3itd2FpbGK6xAka3mU/PzfZeKW8s6wRCmL5ONkUjffZC1BWG/iNi3XU4WX//piOemqmRzgYIjJW0gItY=
-      - ssh-rsa AAAAB3NzaC1yc2EAAAADAQABAAABgQCgXjznNCRu7IYiAq36fXravwWwwJ5xjCKgQo6pso48UMh2UJnjV2JjmFswUGKOD/zowUXveCwzRdh8jEvRBXoBJndbhaMC2Imu/5iWM2699VnkFEV3FbnKfHTIzJU+hiWr84pZobiHkc0jHO/HEzlGVzvVyegioxmz56a6BjalCeGhR/IHsObLQpVjWqetw+XSMzAj0dqTc+xg+bIMrnoSUDkroDrOarhdnsFPpu4NYPEiYqevbYEub0YNtEC9Zq/0gYBE73taBio4Fskb/NxQGzCjr0MNv63svXiUsDOtXdxdPRUmnsIvb0QXTKDct1zbw3y4qQdQUpVci1+z8uAC3oxBdA1JL4++KitYJfASzxnNWfVDl1hunfT72sbNxfHuZ1xMHoFkouFaeCwj8L2w4Wn5uxpq6sN+Qz/rOnzi+Tge8/sLY0NbU8+K7pW2EvcSdIWMzhbr8CWURCAZlqipJfPDJ+NZHOSdcQabJYLaOkuSDsxG0CWa1EuiplKb8TM=
-      - ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIMYj2UzvHmgdiXlpwKuMzvv5CArJINWyrzmPHUSns17c claude-debug
+{{SSH_AUTHORIZED_KEYS}}
 
 # --- Pakete ---
 package_update: true
