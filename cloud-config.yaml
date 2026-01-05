@@ -45,15 +45,27 @@ swap:
   size: 2147483648  # 2GB in Bytes
   maxsize: 2147483648
 
-# --- VS Code Repository (nativ statt runcmd) ---
-apt:
-  sources:
-    vscode:
-      source: "deb [arch=amd64 signed-by=/etc/apt/trusted.gpg.d/vscode.gpg] https://packages.microsoft.com/repos/code stable main"
-      keyid: BC528686B50D79E339D3721CEB3E94ADBE1229CF
-      key: https://packages.microsoft.com/keys/microsoft.asc
-
 # --- Pakete ---
+# =============================================================================
+# WICHTIG: xrdp und VS Code werden NICHT hier, sondern in runcmd installiert!
+# =============================================================================
+#
+# GRUND 1 - xrdp (dpkg-Konflikt):
+#   cloud-init führt write_files VOR packages aus. Wenn wir startwm.sh und
+#   xrdp.ini in write_files schreiben und dann xrdp via packages installieren,
+#   fragt dpkg interaktiv: "Config-Datei existiert bereits, überschreiben?"
+#   Da cloud-init nicht interaktiv ist, schlägt die Installation fehl.
+#   LÖSUNG: xrdp in runcmd installieren, DANACH unsere Config schreiben.
+#
+# GRUND 2 - VS Code (GPG-Key-Problem):
+#   Die cloud-init apt.sources Direktive mit keyid/key funktioniert auf
+#   Debian 12 nicht zuverlässig - der GPG-Key wird nicht korrekt nach
+#   /etc/apt/trusted.gpg.d/ importiert. apt-get update schlägt dann fehl
+#   mit "NO_PUBKEY", und ALLE Pakete werden nicht installiert.
+#   LÖSUNG: GPG-Key manuell in runcmd importieren, dann VS Code installieren.
+#
+# NICHT ÄNDERN: Diese Architektur wurde getestet und funktioniert.
+# =============================================================================
 package_update: true
 package_upgrade: true
 
@@ -68,8 +80,8 @@ packages:
   - xorg
   - xserver-xorg-core
   - xorgxrdp
-  # Remote Desktop
-  - xrdp
+  # x11vnc hier (hat keine Config-Konflikte)
+  # xrdp wird in runcmd installiert - siehe Kommentar oben!
   - x11vnc
   # Browser & Apps (echte .deb, kein Snap!)
   - firefox-esr
@@ -87,76 +99,17 @@ packages:
   - dbus-x11
   - ufw
   - console-setup
-  # VS Code (aus apt sources)
-  - code
 
 # --- Konfigurationsdateien ---
+# =============================================================================
+# WICHTIG: xrdp-Dateien (startwm.sh, xrdp.ini) gehören NICHT hierher!
+# =============================================================================
+# write_files wird VOR packages ausgeführt. Wenn wir xrdp-Config hier
+# schreiben, existieren die Dateien bereits wenn xrdp installiert wird.
+# dpkg fragt dann interaktiv nach → Installation schlägt fehl.
+# Die xrdp-Config wird stattdessen in runcmd geschrieben (siehe unten).
+# =============================================================================
 write_files:
-  # xRDP Startskript - startet XFCE + x11vnc für Screen Sharing
-  - path: /etc/xrdp/startwm.sh
-    permissions: '0755'
-    content: |
-      #!/bin/sh
-      # xrdp X session start script - XFCE mit x11vnc Screen Sharing
-
-      if test -r /etc/profile; then
-          . /etc/profile
-      fi
-
-      # x11vnc für diese RDP-Session starten (Screen Sharing für Admin)
-      if [ "$USER" != "{{ADMIN_NAME}}" ] && [ -f /etc/x11vnc/passwd ]; then
-          x11vnc -display $DISPLAY -forever -shared -rfbauth /etc/x11vnc/passwd -rfbport 5900 -bg -o /tmp/x11vnc-$USER.log 2>&1
-      fi
-
-      # XFCE starten
-      exec startxfce4
-
-  # xrdp.ini - optimiert für Performance
-  - path: /etc/xrdp/xrdp.ini
-    content: |
-      [Globals]
-      ini_version=1
-      fork=true
-      port=3389
-      tcp_nodelay=true
-      tcp_keepalive=true
-      security_layer=negotiate
-      crypt_level=low
-      certificate=
-      key_file=
-      ssl_protocols=TLSv1.2, TLSv1.3
-      autorun=
-      allow_channels=true
-      allow_multimon=true
-      bitmap_cache=true
-      bitmap_compression=true
-      bulk_compression=true
-      max_bpp=16
-      new_cursors=true
-      use_fastpath=both
-
-      [Logging]
-      LogFile=xrdp.log
-      LogLevel=ERROR
-
-      [Channels]
-      rdpdr=true
-      rdpsnd=false
-      drdynvc=true
-      cliprdr=true
-      rail=false
-      xrdpvr=false
-      tcutils=true
-
-      [Xorg]
-      name=Xorg
-      lib=libxup.so
-      username=ask
-      password=ask
-      ip=127.0.0.1
-      port=-1
-      code=20
-
   # XFCE Performance-Einstellungen (kein Compositor)
   - path: /etc/skel/.config/xfce4/xfconf/xfce-perchannel-xml/xfwm4.xml
     content: |
@@ -247,6 +200,105 @@ runcmd:
   - x11vnc -storepasswd {{VNC_PASSWORD}} /etc/x11vnc/passwd
   - chmod 644 /etc/x11vnc/passwd
 
+  # =========================================================================
+  # xrdp Installation und Config - MUSS in runcmd passieren!
+  # =========================================================================
+  # WARUM HIER UND NICHT IN packages?
+  # 1. xrdp in packages installieren würde VOR runcmd passieren
+  # 2. Aber wir brauchen custom startwm.sh und xrdp.ini
+  # 3. write_files läuft VOR packages → Dateien existieren schon
+  # 4. dpkg fragt interaktiv "Datei überschreiben?" → FEHLER
+  # 5. LÖSUNG: xrdp hier installieren, DANN Config überschreiben
+  # =========================================================================
+  - DEBIAN_FRONTEND=noninteractive apt-get install -y xrdp
+
+  # xrdp Config schreiben (jetzt existiert /etc/xrdp/ bereits)
+  - |
+    cat > /etc/xrdp/startwm.sh << 'STARTWM_EOF'
+    #!/bin/sh
+    # xrdp X session start script - XFCE mit x11vnc Screen Sharing
+
+    if test -r /etc/profile; then
+        . /etc/profile
+    fi
+
+    # x11vnc für diese RDP-Session starten (Screen Sharing für Admin)
+    if [ "$USER" != "{{ADMIN_NAME}}" ] && [ -f /etc/x11vnc/passwd ]; then
+        x11vnc -display $DISPLAY -forever -shared -rfbauth /etc/x11vnc/passwd -rfbport 5900 -bg -o /tmp/x11vnc-$USER.log 2>&1
+    fi
+
+    # XFCE starten
+    exec startxfce4
+    STARTWM_EOF
+    chmod 755 /etc/xrdp/startwm.sh
+
+  - |
+    cat > /etc/xrdp/xrdp.ini << 'XRDPINI_EOF'
+    [Globals]
+    ini_version=1
+    fork=true
+    port=3389
+    tcp_nodelay=true
+    tcp_keepalive=true
+    security_layer=negotiate
+    crypt_level=low
+    certificate=
+    key_file=
+    ssl_protocols=TLSv1.2, TLSv1.3
+    autorun=
+    allow_channels=true
+    allow_multimon=true
+    bitmap_cache=true
+    bitmap_compression=true
+    bulk_compression=true
+    max_bpp=16
+    new_cursors=true
+    use_fastpath=both
+
+    [Logging]
+    LogFile=xrdp.log
+    LogLevel=ERROR
+
+    [Channels]
+    rdpdr=true
+    rdpsnd=false
+    drdynvc=true
+    cliprdr=true
+    rail=false
+    xrdpvr=false
+    tcutils=true
+
+    [Xorg]
+    name=Xorg
+    lib=libxup.so
+    username=ask
+    password=ask
+    ip=127.0.0.1
+    port=-1
+    code=20
+    XRDPINI_EOF
+
+  # xRDP konfigurieren und starten
+  - adduser xrdp ssl-cert 2>/dev/null || true
+  - systemctl enable xrdp
+  - systemctl restart xrdp
+
+  # =========================================================================
+  # VS Code Installation - MUSS in runcmd passieren!
+  # =========================================================================
+  # WARUM HIER UND NICHT IN packages MIT apt.sources?
+  # 1. cloud-init apt.sources mit keyid/key ist auf Debian 12 buggy
+  # 2. Der GPG-Key wird nicht korrekt importiert
+  # 3. apt-get update schlägt fehl mit "NO_PUBKEY EB3E94ADBE1229CF"
+  # 4. Dadurch werden ALLE Pakete nicht installiert (nicht nur VS Code!)
+  # 5. LÖSUNG: GPG-Key manuell importieren, dann VS Code installieren
+  # =========================================================================
+  - |
+    curl -fsSL https://packages.microsoft.com/keys/microsoft.asc | gpg --dearmor -o /etc/apt/trusted.gpg.d/microsoft.gpg
+    echo "deb [arch=amd64 signed-by=/etc/apt/trusted.gpg.d/microsoft.gpg] https://packages.microsoft.com/repos/code stable main" > /etc/apt/sources.list.d/vscode.list
+    apt-get update
+    DEBIAN_FRONTEND=noninteractive apt-get install -y code
+
   # XFCE Config für User kopieren
   - |
     source /etc/coding-class.conf
@@ -255,11 +307,6 @@ runcmd:
       cp /etc/skel/.config/xfce4/xfconf/xfce-perchannel-xml/xfwm4.xml /home/$user/.config/xfce4/xfconf/xfce-perchannel-xml/
       chown -R $user:$user /home/$user/.config
     done
-
-  # xRDP konfigurieren und starten
-  - adduser xrdp ssl-cert 2>/dev/null || true
-  - systemctl enable xrdp
-  - systemctl start xrdp
 
   # Desktop-Verknüpfungen erstellen
   - /usr/local/bin/coding-class-setup.sh
