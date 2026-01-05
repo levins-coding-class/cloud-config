@@ -18,14 +18,14 @@ Die `cloud-config.yaml` erstellt automatisch einen vollständig konfigurierten L
 
 | User | Passwort | Zugang | Beschreibung |
 |------|----------|--------|--------------|
-| levin | levin | SSH, RDP | Admin/Sudoer |
-| `<kindname>` | codingclass | RDP | Wird aus Hostname extrahiert |
+| `${ADMIN_NAME}` | auto-generiert | SSH, RDP | Admin/Sudoer (konfigurierbar in .env) |
+| `<kindname>` | auto-generiert | RDP | Wird aus Hostname extrahiert |
 
 ### Zugriffsmethoden
 
-- **Kind (RDP):** `<server-ip>:3389` mit eigenem Account
-- **Levin (VNC):** `vnc://<server-ip>:5900` - Screen Sharing (startet wenn Kind eingeloggt ist), Passwort: `codingclass`
-- **Levin (SSH):** `ssh levin@<server-ip>`
+- **Kind (RDP):** `<server-ip>:3389` mit eigenem Account (Passwort wird bei Deploy generiert)
+- **Mentor (VNC):** `vnc://<server-ip>:5900` - Screen Sharing (startet wenn Kind eingeloggt ist, Passwort wird bei Deploy generiert)
+- **Admin (SSH):** `ssh <admin>@<server-ip>` (Name konfigurierbar via ADMIN_NAME in .env)
 
 ## Hetzner Cloud Konfiguration
 
@@ -55,20 +55,22 @@ Die `cloud-config.yaml` erstellt automatisch einen vollständig konfigurierten L
 ## Deployment
 
 ```bash
-# Mit dem Deploy-Script (empfohlen)
-npm run deploy
+# Setup
+cp .env.example .env
+# .env ausfüllen mit HETZNER_API_TOKEN und ADMIN_NAME
+npm install
 
-# Oder manuell
-source .env
-jq -n \
-  --arg name "coding-class-<kindname>" \
-  --rawfile user_data cloud-config.yaml \
-  '{name: $name, server_type: "cx33", image: "debian-12", location: "nbg1", ssh_keys: [105159908], user_data: $user_data}' \
-| curl -X POST -H "Authorization: Bearer $HETZNER_API_TOKEN" -H "Content-Type: application/json" -d @- "https://api.hetzner.cloud/v1/servers"
+# Server erstellen (generiert automatisch Passwörter)
+npm run deploy create --name <kindname>
+
+# Server anzeigen
+npm run deploy list
 
 # Server löschen
-curl -X DELETE -H "Authorization: Bearer $HETZNER_API_TOKEN" "https://api.hetzner.cloud/v1/servers/<ID>"
+npm run deploy delete --name <kindname>
 ```
+
+Das Script generiert bei jedem Deploy neue, sichere Passwörter und zeigt sie auf der Konsole an.
 
 ## SSH Key
 

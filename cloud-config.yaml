@@ -11,20 +11,20 @@
 #   5. Server erstellen & warten (~5-10 Minuten)
 #
 # ZUGANG:
-#   Kind (RDP):  <ip>:3389, User: <kindname>, Passwort: codingclass
-#   Admin (VNC): vnc://<ip>:5900, Passwort: codingclass (screen sharing)
-#   Admin (SSH): ssh levin@<ip>
+#   Kind (RDP):  <ip>:3389, User: <kindname>, Passwort: <mentee_password>
+#   Admin (VNC): vnc://<ip>:5900, Passwort: <vnc_password> (screen sharing)
+#   Admin (SSH): ssh {{ADMIN_NAME}}@<ip>
 #
 # =============================================================================
 
 # --- Admin-User ---
 users:
-  - name: levin
+  - name: {{ADMIN_NAME}}
     groups: sudo, adm
     shell: /bin/bash
     sudo: ALL=(ALL) NOPASSWD:ALL
     lock_passwd: false
-    plain_text_passwd: levin
+    plain_text_passwd: {{ADMIN_PASSWORD}}
     ssh_authorized_keys:
       - ecdsa-sha2-nistp256 AAAAE2VjZHNhLXNoYTItbmlzdHAyNTYAAAAIbmlzdHAyNTYAAABBBINCAQL3itd2FpbGK6xAka3mU/PzfZeKW8s6wRCmL5ONkUjffZC1BWG/iNi3XU4WX//piOemqmRzgYIjJW0gItY=
       - ssh-rsa AAAAB3NzaC1yc2EAAAADAQABAAABgQCgXjznNCRu7IYiAq36fXravwWwwJ5xjCKgQo6pso48UMh2UJnjV2JjmFswUGKOD/zowUXveCwzRdh8jEvRBXoBJndbhaMC2Imu/5iWM2699VnkFEV3FbnKfHTIzJU+hiWr84pZobiHkc0jHO/HEzlGVzvVyegioxmz56a6BjalCeGhR/IHsObLQpVjWqetw+XSMzAj0dqTc+xg+bIMrnoSUDkroDrOarhdnsFPpu4NYPEiYqevbYEub0YNtEC9Zq/0gYBE73taBio4Fskb/NxQGzCjr0MNv63svXiUsDOtXdxdPRUmnsIvb0QXTKDct1zbw3y4qQdQUpVci1+z8uAC3oxBdA1JL4++KitYJfASzxnNWfVDl1hunfT72sbNxfHuZ1xMHoFkouFaeCwj8L2w4Wn5uxpq6sN+Qz/rOnzi+Tge8/sLY0NbU8+K7pW2EvcSdIWMzhbr8CWURCAZlqipJfPDJ+NZHOSdcQabJYLaOkuSDsxG0CWa1EuiplKb8TM=
@@ -80,8 +80,8 @@ write_files:
           . /etc/profile
       fi
 
-      # x11vnc für diese RDP-Session starten (Screen Sharing für Levin)
-      if [ "$USER" != "levin" ] && [ -f /etc/x11vnc/passwd ]; then
+      # x11vnc für diese RDP-Session starten (Screen Sharing für Admin)
+      if [ "$USER" != "{{ADMIN_NAME}}" ] && [ -f /etc/x11vnc/passwd ]; then
           x11vnc -display $DISPLAY -forever -shared -rfbauth /etc/x11vnc/passwd -rfbport 5900 -bg -o /tmp/x11vnc-$USER.log 2>&1
       fi
 
@@ -176,7 +176,7 @@ write_files:
 
       echo "=== Coding Class Setup ==="
 
-      for user in $KINDNAME levin; do
+      for user in $KINDNAME {{ADMIN_NAME}}; do
         DESKTOP_DIR="/home/$user/Desktop"
         mkdir -p "$DESKTOP_DIR"
 
@@ -220,7 +220,7 @@ runcmd:
     KINDNAME=$(hostname | sed 's/^coding-class-//')
     echo "=== Erstelle User: $KINDNAME ==="
     useradd -m -s /bin/bash -G users "$KINDNAME"
-    echo "$KINDNAME:codingclass" | chpasswd
+    echo "$KINDNAME:{{MENTEE_PASSWORD}}" | chpasswd
     mkdir -p /home/$KINDNAME/Desktop /home/$KINDNAME/Projekte
     chown -R $KINDNAME:$KINDNAME /home/$KINDNAME
     echo "KINDNAME=$KINDNAME" > /etc/coding-class.conf
@@ -241,7 +241,7 @@ runcmd:
 
   # VNC Passwort (muss lesbar sein für User-Session!)
   - mkdir -p /etc/x11vnc
-  - x11vnc -storepasswd codingclass /etc/x11vnc/passwd
+  - x11vnc -storepasswd {{VNC_PASSWORD}} /etc/x11vnc/passwd
   - chmod 644 /etc/x11vnc/passwd
 
   # VS Code installieren (.deb)
@@ -261,7 +261,7 @@ runcmd:
   # XFCE Config für User
   - |
     source /etc/coding-class.conf
-    for user in $KINDNAME levin; do
+    for user in $KINDNAME {{ADMIN_NAME}}; do
       mkdir -p /home/$user/.config/xfce4/xfconf/xfce-perchannel-xml
       cp /etc/skel/.config/xfce4/xfconf/xfce-perchannel-xml/xfwm4.xml /home/$user/.config/xfce4/xfconf/xfce-perchannel-xml/
       chown -R $user:$user /home/$user/.config

@@ -5,8 +5,20 @@ import { createInterface } from 'readline';
 import { readFileSync } from 'fs';
 import { fileURLToPath } from 'url';
 import { dirname, join } from 'path';
+import { randomBytes } from 'crypto';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
+
+// Passwort-Generator (12 Zeichen, alphanumerisch)
+function generatePassword(length = 12) {
+  const chars = 'abcdefghijkmnopqrstuvwxyzABCDEFGHJKLMNPQRSTUVWXYZ23456789';
+  let password = '';
+  const bytes = randomBytes(length);
+  for (let i = 0; i < length; i++) {
+    password += chars[bytes[i] % chars.length];
+  }
+  return password;
+}
 
 // Prompt-Helper
 function prompt(question) {
@@ -45,7 +57,21 @@ async function listServers() {
 
 // Server erstellen
 async function createServer(kindname) {
-  const cloudConfig = readFileSync(join(__dirname, 'cloud-config.yaml'), 'utf-8');
+  let cloudConfig = readFileSync(join(__dirname, 'cloud-config.yaml'), 'utf-8');
+
+  // Passwörter generieren
+  const passwords = {
+    admin: generatePassword(),
+    mentee: generatePassword(),
+    vnc: generatePassword(8), // VNC Passwörter oft auf 8 Zeichen begrenzt
+  };
+
+  // Platzhalter ersetzen
+  cloudConfig = cloudConfig
+    .replace(/\{\{ADMIN_NAME\}\}/g, process.env.ADMIN_NAME)
+    .replace(/\{\{ADMIN_PASSWORD\}\}/g, passwords.admin)
+    .replace(/\{\{MENTEE_PASSWORD\}\}/g, passwords.mentee)
+    .replace(/\{\{VNC_PASSWORD\}\}/g, passwords.vnc);
 
   console.log(`\n🚀 Erstelle Server für ${kindname}...`);
 
@@ -58,6 +84,7 @@ async function createServer(kindname) {
     user_data: cloudConfig,
   });
 
+  result.passwords = passwords;
   return result;
 }
 
@@ -75,11 +102,15 @@ function validateName(name) {
   return name;
 }
 
-// Check API Token
-function checkToken() {
-  if (!process.env.HETZNER_API_TOKEN) {
-    console.error('❌ HETZNER_API_TOKEN nicht gesetzt!');
-    console.error('   Kopiere .env.example nach .env und trage deinen Hetzner API Token ein.');
+// Check Umgebungsvariablen
+function checkEnv() {
+  let missing = [];
+  if (!process.env.HETZNER_API_TOKEN) missing.push('HETZNER_API_TOKEN');
+  if (!process.env.ADMIN_NAME) missing.push('ADMIN_NAME');
+
+  if (missing.length > 0) {
+    console.error('❌ Fehlende Umgebungsvariablen: ' + missing.join(', '));
+    console.error('   Kopiere .env.example nach .env und trage die Werte ein.');
     process.exit(1);
   }
 }
@@ -97,7 +128,7 @@ program
   .alias('ls')
   .description('Zeigt alle Coding Class Server')
   .action(async () => {
-    checkToken();
+    checkEnv();
     const servers = await listServers();
 
     if (servers.length === 0) {
@@ -124,7 +155,7 @@ program
   .description('Erstellt einen neuen Server')
   .option('-n, --name <name>', 'Name des Kindes (Kleinbuchstaben)')
   .action(async (options) => {
-    checkToken();
+    checkEnv();
 
     let kindname = options.name;
 
@@ -149,15 +180,20 @@ program
     try {
       const result = await createServer(kindname);
       const ip = result.server.public_net?.ipv4?.ip || 'wird zugewiesen...';
+      const adminName = process.env.ADMIN_NAME;
 
       console.log(`\n✅ Server erstellt!`);
       console.log(`\n⏳ Installation läuft (~10 Minuten), Server rebootet automatisch.\n`);
-      console.log(`📋 Zugangsdaten:`);
-      console.log(`   RDP: open rdp://${kindname}@${ip}`);
-      console.log(`   Passwort: codingclass`);
-      console.log(`\n   VNC (Screen Sharing): open vnc://${ip}:5900`);
-      console.log(`   VNC Passwort: codingclass`);
-      console.log(`\n   SSH: ssh levin@${ip}`);
+      console.log(`📋 Zugangsdaten:\n`);
+      console.log(`   Kind (${kindname}):`);
+      console.log(`     RDP: open rdp://${kindname}@${ip}`);
+      console.log(`     Passwort: ${result.passwords.mentee}`);
+      console.log(`\n   Admin (${adminName}):`);
+      console.log(`     SSH: ssh ${adminName}@${ip}`);
+      console.log(`     Passwort: ${result.passwords.admin}`);
+      console.log(`\n   VNC (Screen Sharing):`);
+      console.log(`     VNC: open vnc://${ip}:5900`);
+      console.log(`     Passwort: ${result.passwords.vnc}`);
 
     } catch (error) {
       console.error(`\n❌ Fehler: ${error.message}`);
@@ -173,7 +209,7 @@ program
   .option('-n, --name <name>', 'Name des Kindes')
   .option('-f, --force', 'Ohne Bestätigung löschen')
   .action(async (options) => {
-    checkToken();
+    checkEnv();
 
     const servers = await listServers();
 
@@ -215,7 +251,7 @@ program
 // Default action (no command)
 program
   .action(async () => {
-    checkToken();
+    checkEnv();
 
     console.log('🖥️  Coding Class - Server Deployment\n');
 
