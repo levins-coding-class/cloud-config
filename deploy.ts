@@ -38,7 +38,9 @@ interface Passwords {
 }
 
 interface CreateServerResult {
-  server: HetznerServer;
+  apiResult: {
+    server: HetznerServer;
+  };
   passwords: Passwords;
 }
 
@@ -53,7 +55,7 @@ function generatePassword(length: number = 12): string {
   const maxMultiple = Math.floor(256 / chars.length) * chars.length;
 
   while (password.length < length) {
-    const bytes = randomBytes(length);
+    const bytes = randomBytes(32); // Generate 32 bytes per iteration for efficiency
     for (let i = 0; i < bytes.length && password.length < length; i++) {
       const byte = bytes[i];
       if (byte >= maxMultiple) {
