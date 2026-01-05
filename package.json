@@ -7,8 +7,7 @@
     "deploy": "node deploy.js"
   },
   "dependencies": {
-    "commander": "^14.0.2",
-    "dotenv": "^16.3.1"
+    "commander": "^14.0.2"
   },
   "keywords": [
     "hetzner",

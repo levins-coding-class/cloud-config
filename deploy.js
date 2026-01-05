@@ -1,11 +1,11 @@
 #!/usr/bin/env node
-import 'dotenv/config';
 import { program } from 'commander';
 import { createInterface } from 'readline';
 import { readFileSync } from 'fs';
 import { fileURLToPath } from 'url';
 import { dirname, join } from 'path';
 import { randomBytes } from 'crypto';
+import config from './config.json' with { type: 'json' };
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 
@@ -20,14 +20,12 @@ function generatePassword(length = 12) {
   return password;
 }
 
-// SSH Keys aus .env als YAML-Array formatieren
+// SSH Keys als YAML-Array formatieren
 function formatSshKeysYaml() {
-  const keys = process.env.SSH_AUTHORIZED_KEYS || '';
-  if (!keys.trim()) return '      # Keine SSH Keys konfiguriert';
+  const keys = config.admin?.sshKeys || [];
+  if (keys.length === 0) return '      # Keine SSH Keys konfiguriert';
 
   return keys
-    .split('\n')
-    .map(k => k.trim())
     .filter(k => k && !k.startsWith('#'))
     .map(k => `      - ${k}`)
     .join('\n');
@@ -49,7 +47,7 @@ async function hetznerApi(method, endpoint, body = null) {
   const response = await fetch(`https://api.hetzner.cloud/v1${endpoint}`, {
     method,
     headers: {
-      'Authorization': `Bearer ${process.env.HETZNER_API_TOKEN}`,
+      'Authorization': `Bearer ${config.hetzner.apiToken}`,
       'Content-Type': 'application/json',
     },
     body: body ? JSON.stringify(body) : null,
@@ -81,7 +79,7 @@ async function createServer(kindname) {
 
   // Platzhalter ersetzen
   cloudConfig = cloudConfig
-    .replace(/\{\{ADMIN_NAME\}\}/g, process.env.ADMIN_NAME)
+    .replace(/\{\{ADMIN_NAME\}\}/g, config.admin.name)
     .replace(/\{\{ADMIN_PASSWORD\}\}/g, passwords.admin)
     .replace(/\{\{MENTEE_PASSWORD\}\}/g, passwords.mentee)
     .replace(/\{\{VNC_PASSWORD\}\}/g, passwords.vnc)
@@ -97,11 +95,6 @@ async function createServer(kindname) {
     location: 'nbg1',
     user_data: cloudConfig,
   };
-
-  // Optionale Hetzner SSH Key ID hinzufügen (für Rescue-System etc.)
-  if (process.env.HETZNER_SSH_KEY_ID) {
-    serverRequest.ssh_keys = [parseInt(process.env.HETZNER_SSH_KEY_ID)];
-  }
 
   const result = await hetznerApi('POST', '/servers', serverRequest);
 
@@ -123,15 +116,19 @@ function validateName(name) {
   return name;
 }
 
-// Check Umgebungsvariablen
-function checkEnv() {
+// Check Konfiguration
+function checkConfig() {
   let missing = [];
-  if (!process.env.HETZNER_API_TOKEN) missing.push('HETZNER_API_TOKEN');
-  if (!process.env.ADMIN_NAME) missing.push('ADMIN_NAME');
+  if (!config.hetzner?.apiToken || config.hetzner.apiToken === 'your-api-token-here') {
+    missing.push('hetzner.apiToken');
+  }
+  if (!config.admin?.name || config.admin.name === 'your-admin-name') {
+    missing.push('admin.name');
+  }
 
   if (missing.length > 0) {
-    console.error('❌ Fehlende Umgebungsvariablen: ' + missing.join(', '));
-    console.error('   Kopiere .env.example nach .env und trage die Werte ein.');
+    console.error('❌ Fehlende Konfiguration: ' + missing.join(', '));
+    console.error('   Bearbeite config.json und trage die Werte ein.');
     process.exit(1);
   }
 }
@@ -149,7 +146,7 @@ program
   .alias('ls')
   .description('Zeigt alle Coding Class Server')
   .action(async () => {
-    checkEnv();
+    checkConfig();
     const servers = await listServers();
 
     if (servers.length === 0) {
@@ -176,7 +173,7 @@ program
   .description('Erstellt einen neuen Server')
   .option('-n, --name <name>', 'Name des Kindes (Kleinbuchstaben)')
   .action(async (options) => {
-    checkEnv();
+    checkConfig();
 
     let kindname = options.name;
 
@@ -201,7 +198,7 @@ program
     try {
       const result = await createServer(kindname);
       const ip = result.server.public_net?.ipv4?.ip || 'wird zugewiesen...';
-      const adminName = process.env.ADMIN_NAME;
+      const adminName = config.admin.name;
 
       console.log(`\n✅ Server erstellt!`);
       console.log(`\n⏳ Installation läuft (~10 Minuten), Server rebootet automatisch.\n`);
@@ -230,7 +227,7 @@ program
   .option('-n, --name <name>', 'Name des Kindes')
   .option('-f, --force', 'Ohne Bestätigung löschen')
   .action(async (options) => {
-    checkEnv();
+    checkConfig();
 
     const servers = await listServers();
 
@@ -272,7 +269,7 @@ program
 // Default action (no command)
 program
   .action(async () => {
-    checkEnv();
+    checkConfig();
 
     console.log('🖥️  Coding Class - Server Deployment\n');
 

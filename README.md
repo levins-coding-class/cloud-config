@@ -20,14 +20,13 @@ Die Coding Class ist ein Programmierkurs für Kinder, die mit professionellen To
 ### 1. Setup
 
 ```bash
-# .env.example kopieren und ausfüllen
-cp .env.example .env
+# config.example.json kopieren und ausfüllen
+cp config.example.json config.json
 
-# In .env eintragen:
-# - HETZNER_API_TOKEN: Dein Hetzner Cloud API Token
-# - ADMIN_NAME: Name des Admin-Accounts (z.B. "levin")
-# - SSH_AUTHORIZED_KEYS: Deine SSH Public Keys (einer pro Zeile)
-# - HETZNER_SSH_KEY_ID: (optional) Hetzner SSH Key ID für Rescue-System
+# In config.json eintragen:
+# - hetzner.apiToken: Dein Hetzner Cloud API Token
+# - admin.name: Name des Admin-Accounts (z.B. "levin")
+# - admin.sshKeys: Deine SSH Public Keys (als Array)
 
 # Dependencies installieren
 npm install
@@ -64,10 +63,10 @@ npm run deploy delete        # Server löschen
 
 - `cloud-config.yaml` - Die cloud-init Template-Konfiguration
 - `deploy.js` - CLI zum Erstellen/Verwalten von Servern
-- `.env` - Konfiguration (gitignored)
+- `config.json` - Konfiguration (gitignored)
 
 ## Anforderungen
 
 - Node.js
 - Hetzner Cloud Account
-- API Token und Admin-Name in `.env`
+- Konfiguration in `config.json`
