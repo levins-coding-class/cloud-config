@@ -5,7 +5,7 @@
 #
 # VERWENDUNG:
 #   1. Hetzner Cloud Console → Server erstellen
-#   2. Server-Name: coding-class-<kindname> (z.B. "coding-class-friedrich")
+#   2. Server-Name: coding-class-<kindname> (z.B. "coding-class-test-kind")
 #   3. Debian 12 auswählen
 #   4. Bei "Cloud config" dieses YAML einfügen (KEINE Anpassung nötig!)
 #   5. Server erstellen & warten (~5-10 Minuten)
