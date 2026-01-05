@@ -15,7 +15,7 @@
 
 set -e
 
-VM_NAME="coding-class-friedrich"
+VM_NAME="coding-class-test-kind"
 CONFIG_FILE="cloud-config.yaml"
 
 # Farben
@@ -140,15 +140,15 @@ run_test() {
     FAILED=0
 
     run_checks "Admin-User 'levin' existiert" "id levin" || FAILED=1
-    run_checks "Kind-User 'friedrich' existiert" "id friedrich" || FAILED=1
-    run_checks "Home-Verzeichnis existiert" "test -d /home/friedrich" || FAILED=1
-    run_checks "Desktop-Verzeichnis existiert" "test -d /home/friedrich/Desktop" || FAILED=1
-    run_checks "Projekte-Verzeichnis existiert" "test -d /home/friedrich/Projekte" || FAILED=1
+    run_checks "Kind-User 'test-kind' existiert" "id test-kind" || FAILED=1
+    run_checks "Home-Verzeichnis existiert" "test -d /home/test-kind" || FAILED=1
+    run_checks "Desktop-Verzeichnis existiert" "test -d /home/test-kind/Desktop" || FAILED=1
+    run_checks "Projekte-Verzeichnis existiert" "test -d /home/test-kind/Projekte" || FAILED=1
     run_checks "Config-Datei erstellt" "test -f /etc/coding-class.conf" || FAILED=1
     run_checks "xrdp installiert" "dpkg -l | grep -q xrdp" || FAILED=1
     run_checks "x11vnc installiert" "dpkg -l | grep -q x11vnc" || FAILED=1
     run_checks "GDM3 konfiguriert" "grep -q WaylandEnable=false /etc/gdm3/custom.conf" || FAILED=1
-    run_checks "Auto-Login konfiguriert" "grep -q AutomaticLogin=friedrich /etc/gdm3/custom.conf" || FAILED=1
+    run_checks "Auto-Login konfiguriert" "grep -q AutomaticLogin=test-kind /etc/gdm3/custom.conf" || FAILED=1
     run_checks "Polkit-Regeln existieren" "test -f /etc/polkit-1/rules.d/45-allow-colord.rules" || FAILED=1
     run_checks "xrdp Service aktiviert" "systemctl is-enabled xrdp" || FAILED=1
     run_checks "x11vnc Service aktiviert" "systemctl is-enabled x11vnc" || FAILED=1
